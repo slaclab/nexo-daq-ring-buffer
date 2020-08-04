@@ -23,4 +23,17 @@ use surf.AxiPkg.all;
 
 package RingBufferPkg is
 
+   -- Number of AXI stream lanes from channel bond to ring buffer
+   constant CH_BOND_TO_RING_LANES_C : positive := 1;
+
+   -- Ring Buffer AXI Stream Configuration
+   constant RING_AXIS_CONFIG_C : AxiStreamConfigType := (
+      TSTRB_EN_C    => false,
+      TDATA_BYTES_C => 8,               -- 64-bit data interface
+      TDEST_BITS_C  => 0,
+      TID_BITS_C    => 0,
+      TKEEP_MODE_C  => TKEEP_COMP_C,
+      TUSER_BITS_C  => 2,               -- BIT0=EOFE, BIT1=SOF
+      TUSER_MODE_C  => TUSER_FIRST_LAST_C);
+
 end package RingBufferPkg;
