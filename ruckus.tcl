@@ -17,3 +17,4 @@ if { [VersionCheck 2020.1] < 0 } {exit -1}
 
 # Load Source Code
 loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl"
+loadIpCore -dir "$::DIR_PATH/ip"
