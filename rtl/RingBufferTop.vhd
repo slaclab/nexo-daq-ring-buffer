@@ -106,10 +106,10 @@ architecture mapping of RingBufferTop is
    signal cpMasters : AxiStreamMasterArray(AXIS_SIZE_G-1 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);
    signal cpSlaves  : AxiStreamSlaveArray(AXIS_SIZE_G-1 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C);
 
-   signal axiWriteMasters : AxiWriteMasterArray(15 downto 0) := (others => AXI_WRITE_MASTER_INIT_C);
-   signal axiWriteSlaves  : AxiWriteSlaveArray(15 downto 0)  := (others => AXI_WRITE_SLAVE_INIT_C);
-   signal axiReadMasters  : AxiReadMasterArray(15 downto 0)  := (others => AXI_READ_MASTER_INIT_C);
-   signal axiReadSlaves   : AxiReadSlaveArray(15 downto 0)   := (others => AXI_READ_SLAVE_INIT_C);
+   signal axiWriteMasters : AxiWriteMasterArray(14 downto 0) := (others => AXI_WRITE_MASTER_INIT_C);
+   signal axiWriteSlaves  : AxiWriteSlaveArray(14 downto 0)  := (others => AXI_WRITE_SLAVE_INIT_C);
+   signal axiReadMasters  : AxiReadMasterArray(14 downto 0)  := (others => AXI_READ_MASTER_INIT_C);
+   signal axiReadSlaves   : AxiReadSlaveArray(14 downto 0)   := (others => AXI_READ_SLAVE_INIT_C);
 
 begin
 
