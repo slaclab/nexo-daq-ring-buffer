@@ -3,6 +3,8 @@
 -------------------------------------------------------------------------------
 -- Description: Ring Buffer Engine DMA
 -------------------------------------------------------------------------------
+-- Data Format Definitions: https://docs.google.com/spreadsheets/d/1EdbgGU8szjVyl3ZKYMZXtHn6p-MUJLZG59m6oqJuD-0/edit?usp=sharing
+-------------------------------------------------------------------------------
 -- This file is part of 'nexo-daq-ring-buffer'.
 -- It is subject to the license terms in the LICENSE.txt file found in the
 -- top-level directory of this distribution and at:
@@ -21,6 +23,7 @@ library surf;
 use surf.StdRtlPkg.all;
 use surf.AxiStreamPkg.all;
 use surf.AxiPkg.all;
+use surf.AxiDmaPkg.all;
 
 library axi_pcie_core;
 use axi_pcie_core.MigPkg.all;
@@ -68,10 +71,10 @@ architecture rtl of RingBufferDma is
 
    signal dmaIbMaster : AxiStreamMasterType;
    signal dmaIbSlave  : AxiStreamSlaveType;
-   signal dmaIbCtrl   : AxiStreamCtrlType;
 
    signal dmaObMaster : AxiStreamMasterType;
    signal dmaObSlave  : AxiStreamSlaveType;
+   signal dmaObCtrl   : AxiStreamCtrlType;
 
    signal readResizeMaster : AxiStreamMasterType;
    signal readResizeSlave  : AxiStreamSlaveType;
@@ -93,7 +96,7 @@ begin
             -- FIFO configurations
             MEMORY_TYPE_G       => "block",
             GEN_SYNC_FIFO_G     => true,
-            FIFO_ADDR_WIDTH_G   => 9,  -- 6kB/FIFO = 12-bytes x 512 entries
+            FIFO_ADDR_WIDTH_G   => 9,   -- 6kB/FIFO = 12-bytes x 512 entries
             -- AXI Stream Port Configurations
             SLAVE_AXI_CONFIG_G  => nexoAxisConfig(ADC_TYPE_G),
             MASTER_AXI_CONFIG_G => nexoAxisConfig(ADC_TYPE_G))
@@ -150,7 +153,7 @@ begin
    ---------------------------------
    -- Store and Forward Write Buffer
    ---------------------------------
-   U_Cache : entity surf.AxiStreamFifoV2
+   U_IbCache : entity surf.AxiStreamFifoV2
       generic map (
          -- General Configurations
          TPD_G               => TPD_G,
@@ -222,9 +225,9 @@ begin
          dmaReq        => rdReq,
          dmaAck        => rdAck,
          -- AXI Stream Interface
-         axisMaster    => dmaIbMaster,
-         axisSlave     => dmaIbSlave,
-         axisCtrl      => dmaIbCtrl,
+         axisMaster    => dmaObMaster,
+         axisSlave     => dmaObSlave,
+         axisCtrl      => dmaObCtrl,
          -- AXI4 Interface
          axiReadMaster => axiReadMaster,
          axiReadSlave  => axiReadSlave);
@@ -232,7 +235,7 @@ begin
    ---------------------------------
    -- Store and Forward Read Buffer
    ---------------------------------
-   U_Cache : entity surf.AxiStreamFifoV2
+   U_ObCache : entity surf.AxiStreamFifoV2
       generic map (
          -- General Configurations
          TPD_G               => TPD_G,
@@ -252,9 +255,9 @@ begin
          -- Slave Port
          sAxisClk    => clk,
          sAxisRst    => rst,
-         sAxisMaster => dmaIbMaster,
-         sAxisSlave  => dmaIbSlave,
-         sAxisCtrl   => dmaIbCtrl,
+         sAxisMaster => dmaObMaster,
+         sAxisSlave  => dmaObSlave,
+         sAxisCtrl   => dmaObCtrl,
          -- Master Port
          mAxisClk    => clk,
          mAxisRst    => rst,

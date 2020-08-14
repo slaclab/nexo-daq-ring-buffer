@@ -3,6 +3,8 @@
 -------------------------------------------------------------------------------
 -- Description: Ring Buffer Top-Level (1 RingBufferTop per DDR4 DIMM)
 -------------------------------------------------------------------------------
+-- Data Format Definitions: https://docs.google.com/spreadsheets/d/1EdbgGU8szjVyl3ZKYMZXtHn6p-MUJLZG59m6oqJuD-0/edit?usp=sharing
+-------------------------------------------------------------------------------
 -- This file is part of 'nexo-daq-ring-buffer'.
 -- It is subject to the license terms in the LICENSE.txt file found in the
 -- top-level directory of this distribution and at:
@@ -104,10 +106,10 @@ architecture mapping of RingBufferTop is
    signal cpMasters : AxiStreamMasterArray(AXIS_SIZE_G-1 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);
    signal cpSlaves  : AxiStreamSlaveArray(AXIS_SIZE_G-1 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C);
 
-   signal axiWriteMasters : AxiWriteMasterArray(23 downto 0) := (others => AXI_WRITE_MASTER_INIT_C);
-   signal axiWriteSlaves  : AxiWriteSlaveArray(23 downto 0)  := (others => AXI_WRITE_SLAVE_INIT_C);
-   signal axiReadMasters  : AxiReadMasterArray(23 downto 0)  := (others => AXI_READ_MASTER_INIT_C);
-   signal axiReadSlaves   : AxiReadSlaveArray(23 downto 0)   := (others => AXI_READ_SLAVE_INIT_C);
+   signal axiWriteMasters : AxiWriteMasterArray(15 downto 0) := (others => AXI_WRITE_MASTER_INIT_C);
+   signal axiWriteSlaves  : AxiWriteSlaveArray(15 downto 0)  := (others => AXI_WRITE_SLAVE_INIT_C);
+   signal axiReadMasters  : AxiReadMasterArray(15 downto 0)  := (others => AXI_READ_MASTER_INIT_C);
+   signal axiReadSlaves   : AxiReadSlaveArray(15 downto 0)   := (others => AXI_READ_SLAVE_INIT_C);
 
 begin
 

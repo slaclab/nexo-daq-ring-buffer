@@ -3,6 +3,8 @@
 -------------------------------------------------------------------------------
 -- Description: Ring Buffer Engine
 -------------------------------------------------------------------------------
+-- Data Format Definitions: https://docs.google.com/spreadsheets/d/1EdbgGU8szjVyl3ZKYMZXtHn6p-MUJLZG59m6oqJuD-0/edit?usp=sharing
+-------------------------------------------------------------------------------
 -- This file is part of 'nexo-daq-ring-buffer'.
 -- It is subject to the license terms in the LICENSE.txt file found in the
 -- top-level directory of this distribution and at:
@@ -21,7 +23,9 @@ library surf;
 use surf.StdRtlPkg.all;
 use surf.AxiLitePkg.all;
 use surf.AxiStreamPkg.all;
+use surf.SsiPkg.all;
 use surf.AxiPkg.all;
+use surf.AxiDmaPkg.all;
 
 library nexo_daq_ring_buffer;
 use nexo_daq_ring_buffer.RingBufferPkg.all;
@@ -129,7 +133,7 @@ architecture rtl of RingBufferEngine is
 begin
 
    comb : process (adcMaster, axilReadMaster, axilWriteMaster, r, reorgSlaves,
-                   rst, wrAck, wrHdr) is
+                   rst, trigHdrSlave, trigRdMaster, wrAck, wrHdr) is
       variable v          : RegType;
       variable axilEp     : AxiLiteEndPointType;
       variable i          : natural;
@@ -263,7 +267,7 @@ begin
       end if;
 
       --------------------------------------------------------------------------------
-      -- Write AXIS Data Reorganization
+      -- Read DMA Control
       --------------------------------------------------------------------------------
 
       -- AXI Stream Flow Control
@@ -370,8 +374,7 @@ begin
    ----------------------------
    U_InsertTrigHdr : entity nexo_daq_ring_buffer.RingBufferInsertTrigHdr
       generic map (
-         TPD_G      => TPD_G,
-         ADC_TYPE_G => ADC_TYPE_G)
+         TPD_G => TPD_G)
       port map (
          -- Clock and Reset
          clk           => clk,

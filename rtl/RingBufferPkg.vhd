@@ -3,6 +3,8 @@
 -------------------------------------------------------------------------------
 -- Description: Package file for Ring Buffer
 -------------------------------------------------------------------------------
+-- Data Format Definitions: https://docs.google.com/spreadsheets/d/1EdbgGU8szjVyl3ZKYMZXtHn6p-MUJLZG59m6oqJuD-0/edit?usp=sharing
+-------------------------------------------------------------------------------
 -- This file is part of 'nexo-daq-ring-buffer'.
 -- It is subject to the license terms in the LICENSE.txt file found in the
 -- top-level directory of this distribution and at:
