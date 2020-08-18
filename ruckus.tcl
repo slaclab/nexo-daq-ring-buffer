@@ -15,6 +15,18 @@ if { [info exists ::env(OVERRIDE_SUBMODULE_LOCKS)] != 1 || $::env(OVERRIDE_SUBMO
 # Check for version 2020.1 of Vivado (or later)
 if { [VersionCheck 2020.1] < 0 } {exit -1}
 
-# Load Source Code
+# Load RTL Source Code
 loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl"
+loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/Resize32b"
+loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/Resize64b"
+loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/Resize128b"
+loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/Resize256b"
+loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/Resize512b"
+
+# Load Xilinx IP Cores
 loadIpCore -dir "$::DIR_PATH/ip"
+# loadIpCore -dir "$::DIR_PATH/ip/Resize32b"
+# loadIpCore -dir "$::DIR_PATH/ip/Resize64b"
+loadIpCore -dir "$::DIR_PATH/ip/Resize128b"
+# loadIpCore -dir "$::DIR_PATH/ip/Resize256b"
+# loadIpCore -dir "$::DIR_PATH/ip/Resize512b"
