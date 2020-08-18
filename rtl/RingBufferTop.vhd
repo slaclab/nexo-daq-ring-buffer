@@ -39,6 +39,7 @@ entity RingBufferTop is
       TPD_G                  : time                   := 1 ns;
       SIMULATION_G           : boolean                := false;
       ADC_TYPE_G             : boolean                := true;  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
+      DDR_DIMM_INDEX_G       : natural                := 0;
       AXIS_SIZE_G            : positive range 1 to 15 := 15;
       ADC_CLK_IS_CORE_CLK_G  : boolean                := true;
       TRIG_CLK_IS_CORE_CLK_G : boolean                := true;
@@ -256,8 +257,8 @@ begin
             TPD_G            => TPD_G,
             SIMULATION_G     => SIMULATION_G,
             ADC_TYPE_G       => ADC_TYPE_G,
-            STREAM_INDEX_G   => i,
-            AXIL_BASE_ADDR_G => AXIL_CONFIG_C(i).baseAddr)
+            DDR_DIMM_INDEX_G => DDR_DIMM_INDEX_G,
+            STREAM_INDEX_G   => i)
          port map (
             -- Clock and Reset
             clk             => coreClk,
@@ -323,17 +324,16 @@ begin
       generic map (
          TPD_G => TPD_G)
       port map (
-         -- Interconnect Clock/Reset
-         aclk             => coreClk,
-         arst             => coreRst,
          -- Slaves
          sAxiClk          => coreClk,
+         sAxiRst          => coreRst,
          sAxiWriteMasters => axiWriteMasters,
          sAxiWriteSlaves  => axiWriteSlaves,
          sAxiReadMasters  => axiReadMasters,
          sAxiReadSlaves   => axiReadSlaves,
          -- Master
          mAxiClk          => ddrClk,
+         mAxiRst          => ddrRst,
          mAxiWriteMaster  => ddrWriteMaster,
          mAxiWriteSlave   => ddrWriteSlave,
          mAxiReadMaster   => ddrReadMaster,

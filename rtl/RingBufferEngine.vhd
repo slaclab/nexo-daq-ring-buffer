@@ -38,13 +38,13 @@ entity RingBufferEngine is
       TPD_G            : time    := 1 ns;
       SIMULATION_G     : boolean := false;
       ADC_TYPE_G       : boolean := true;  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
-      STREAM_INDEX_G   : natural := 1;
-      AXIL_BASE_ADDR_G : slv(31 downto 0));
+      DDR_DIMM_INDEX_G : natural := 0;
+      STREAM_INDEX_G   : natural := 0);
    port (
       -- Clock and Reset
       clk             : in  sl;
       rst             : in  sl;
-      -- Compression Inbound Interface
+      -- ADC Stream Interface
       adcMaster       : in  AxiStreamMasterType;
       adcSlave        : out AxiStreamSlaveType;
       -- Trigger Decision Interface
@@ -67,47 +67,24 @@ end RingBufferEngine;
 
 architecture rtl of RingBufferEngine is
 
-   type WrStateType is (
-      WR_IDLE_S,
-      WR_MOVE_S);
-
-   type RdStateType is (
-      RD_IDLE_S);
-
    type RegType is record
-      -- AXI-Lite Registers
+      enable         : sl;
+      cntRst         : sl;
+      awcache        : slv(3 downto 0);
+      arcache        : slv(3 downto 0);
       dropFrameCnt   : slv(31 downto 0);
-      -- Write Signals
-      adcSlave       : AxiStreamSlaveType;
-      reorgMasters   : AxiStreamMasterArray(15 downto 0);
-      wrIdx          : natural range 0 to 15;
-      tsAlignCnt     : slv(7 downto 0);
-      wrReq          : AxiWriteDmaReqType;
-      wrState        : WrStateType;
-      -- Read Signals
-      trigRdSlave    : AxiStreamSlaveType;
-      trigHdrMaster  : AxiStreamMasterType;
-      rdReq          : AxiReadDmaReqType;
-      rdState        : RdStateType;
+      eofeEventCnt   : slv(31 downto 0);
       -- AXI-Lite
       axilReadSlave  : AxiLiteReadSlaveType;
       axilWriteSlave : AxiLiteWriteSlaveType;
    end record;
    constant REG_INIT_C : RegType := (
-      -- AXI-Lite Registers
+      enable         => '1',
+      cntRst         => '0',
+      awcache        => "0010",         -- Merge-able writes
+      arcache        => "1111",
       dropFrameCnt   => (others => '0'),
-      -- Write Signals
-      adcSlave       => AXI_STREAM_SLAVE_INIT_C,
-      reorgMasters   => (others => AXI_STREAM_MASTER_INIT_C),
-      wrIdx          => 0,
-      tsAlignCnt     => (others => '0'),
-      wrReq          => AXI_WRITE_DMA_REQ_INIT_C,
-      wrState        => WR_IDLE_S,
-      -- Read Signals
-      trigRdSlave    => AXI_STREAM_SLAVE_INIT_C,
-      trigHdrMaster  => AXI_STREAM_MASTER_INIT_C,
-      rdReq          => AXI_READ_DMA_REQ_INIT_C,
-      rdState        => RD_IDLE_S,
+      eofeEventCnt   => (others => '0'),
       -- AXI-Lite
       axilReadSlave  => AXI_LITE_READ_SLAVE_INIT_C,
       axilWriteSlave => AXI_LITE_WRITE_SLAVE_INIT_C);
@@ -115,181 +92,54 @@ architecture rtl of RingBufferEngine is
    signal r   : RegType := REG_INIT_C;
    signal rin : RegType;
 
+   signal dropFrame : sl;
+   signal eofeEvent : sl;
+
    signal wrReq : AxiWriteDmaReqType;
    signal wrAck : AxiWriteDmaAckType;
-   signal wrHdr : AxiStreamMasterType;
+
    signal rdReq : AxiReadDmaReqType;
    signal rdAck : AxiReadDmaAckType;
 
-   signal reorgMasters : AxiStreamMasterArray(15 downto 0);
-   signal reorgSlaves  : AxiStreamSlaveArray(15 downto 0);
-
-   signal trigHdrMaster : AxiStreamMasterType;
-   signal trigHdrSlave  : AxiStreamSlaveType;
+   signal writeMaster : AxiStreamMasterType;
+   signal writeSlave  : AxiStreamSlaveType;
 
    signal readMaster : AxiStreamMasterType;
    signal readSlave  : AxiStreamSlaveType;
 
+   signal trigHdrMaster : AxiStreamMasterType;
+   signal trigHdrSlave  : AxiStreamSlaveType;
+
 begin
 
-   comb : process (adcMaster, axilReadMaster, axilWriteMaster, r, reorgSlaves,
-                   rst, trigHdrSlave, trigRdMaster, wrAck, wrHdr) is
-      variable v          : RegType;
-      variable axilEp     : AxiLiteEndPointType;
-      variable i          : natural;
-      variable wrAllReady : sl;
+   comb : process (axilReadMaster, axilWriteMaster, dropFrame, eofeEvent, r,
+                   rst) is
+      variable v      : RegType;
+      variable axilEp : AxiLiteEndPointType;
    begin
       -- Latch the current value
       v := r;
 
-      --------------------------------------------------------------------------------
-      -- Write AXIS Data Reorganization
-      --------------------------------------------------------------------------------
+      -- Reset strobes
+      v.cntRst := '0';
 
-      -- AXI Stream Flow Control
-      v.adcSlave.tReady := '0';
-      for i in 15 downto 0 loop
-         if (reorgSlaves(i).tReady = '0') then
-            v.reorgMasters(i).tValid := '0';
-            v.reorgMasters(i).tLast  := '0';
-         end if;
-      end loop;
-      wrAllReady := '1';
-      for i in 15 downto 0 loop
-         if (r.reorgMasters(i).tValid = '1') then
-            wrAllReady := '0';
-         end if;
-      end loop;
-
-      -- State machine
-      case r.wrState is
-         ----------------------------------------------------------------------
-         when WR_IDLE_S =>
-            -- Check if ready to move data
-            if (adcMaster.tValid = '1') and (wrAllReady = '1') then
-
-               -- Accept the data
-               v.adcSlave.tReady := '1';
-
-               -- Check for SOF and not EOF and phase alignment to timestamp
-               if (ssiGetUserSof(nexoAxisConfig(ADC_TYPE_G), adcMaster) = '1') and (adcMaster.tLast = '0') and (r.tsAlignCnt = adcMaster.tData(7 downto 0)) then
-
-                  -- Check for 1st time stamp
-                  if (r.tsAlignCnt = 0) then
-                     for i in 15 downto 0 loop
-
-                        -- Copy the header to all 16 streams
-                        v.reorgMasters(i) := adcMaster;
-
-                        -- Overwrite the ring buffer stream ID
-                        v.reorgMasters(i).tData(47 downto 44) := toSlv(i, 4);
-
-                     end loop;
-                  end if;
-
-                  -- Reset counter
-                  v.wrIdx := 0;
-
-                  -- Next state
-                  v.wrState := WR_MOVE_S;
-
-               elsif (adcMaster.tLast = '1') then
-
-                  -- Increment the error counter
-                  v.dropFrameCnt := r.dropFrameCnt + 1;
-
-               end if;
-
-            end if;
-         ----------------------------------------------------------------------
-         when WR_MOVE_S =>
-            -- Check if ready to move data
-            if (adcMaster.tValid = '1') and (r.reorgMasters(r.wrIdx).tValid = '0') then
-
-               -- Accept the data
-               v.adcSlave.tReady := '1';
-
-               -- Copy the ADC data
-               v.reorgMasters(r.wrIdx) := adcMaster;
-
-               -- Check if last time slice frame
-               if (r.tsAlignCnt = 255) then
-                  v.reorgMasters(r.wrIdx).tLast := '1';
-               else
-                  -- Reset EOF
-                  v.reorgMasters(r.wrIdx).tLast := '0';
-               end if;
-
-               -- Check for last transfer
-               if (r.wrIdx = 15) then
-
-                  -- Increment the counter
-                  v.tsAlignCnt := r.tsAlignCnt + 1;
-
-                  -- Next state
-                  v.wrState := WR_IDLE_S;
-
-               else
-                  -- Increment the counter
-                  v.wrIdx := r.wrIdx + 1;
-               end if;
-
-            end if;
-
-      ----------------------------------------------------------------------
-      end case;
-
-      --------------------------------------------------------------------------------
-      -- Write DMA Control
-      --------------------------------------------------------------------------------
-
-      -- Check if ready for next DMA Write REQ
-      if (wrHdr.tValid = '1') and (r.wrReq.request = '0') and (wrAck.done = '0') and (wrAck.idle = '1') then
-
-         -- Send the DMA Write REQ
-         v.wrReq.request := '1';
-
-         -- Set Memory Address offset
-         v.wrReq.address(11 downto 0)  := x"000";  -- 4kB address alignment
-         v.wrReq.address(15 downto 12) := wrHdr.tDest(3 downto 0);  -- Cache buffer index
-         v.wrReq.address(29 downto 16) := wrHdr.tData(21 downto 8);  -- Address.BIT[29:16] = TimeStamp[21:8]
-         v.wrReq.address(33 downto 30) := toSlv(STREAM_INDEX_G, 4);  -- AXI Stream Index
-
-         -- Set the max buffer size
-         v.wrReq.maxSize := toSlv(4096, 32);
-
-      -- Wait for the DMA Write ACK
-      elsif (r.wrReq.request = '1') and (wrAck.done = '1') then
-
-         -- Reset the flag
-         v.wrReq.request := '0';
-
+      -- Check for dropped frame flag
+      if (dropFrame = '1') then
+         -- Increment the error counter
+         v.dropFrameCnt := r.dropFrameCnt + 1;
       end if;
 
-      --------------------------------------------------------------------------------
-      -- Read DMA Control
-      --------------------------------------------------------------------------------
-
-      -- AXI Stream Flow Control
-      v.trigRdSlave.tReady := '0';
-      if (trigHdrSlave.tReady = '0') then
-         v.trigHdrMaster.tValid := '0';
-         v.trigHdrMaster.tLast  := '0';
+      -- Check for eofeEvent flag
+      if (eofeEvent = '1') then
+         -- Increment the error counter
+         v.eofeEventCnt := r.eofeEventCnt + 1;
       end if;
 
-      -- State machine
-      case r.rdState is
-         ----------------------------------------------------------------------
-         when RD_IDLE_S =>
-            -- Wait for Trigger decision
-            if (trigRdMaster.tValid = '1') then
-
-               -- Accept the data
-               v.trigRdSlave.tReady := '1';
-
-            end if;
-      ----------------------------------------------------------------------
-      end case;
+      -- Check for counter reset
+      if (r.cntRst = '1') then
+         v.dropFrameCnt := (others => '0');
+         v.eofeEventCnt := (others => '0');
+      end if;
 
       --------------------------------------------------------------------------------
       -- AXI-Lite Register Transactions
@@ -300,28 +150,27 @@ begin
 
       -- Map the read registers
       axiSlaveRegisterR(axilEp, x"00", 0, toSlv(STREAM_INDEX_G, 4));
+      axiSlaveRegisterR(axilEp, x"00", 4, toSlv(DDR_DIMM_INDEX_G, 4));
+      axiSlaveRegisterR(axilEp, x"00", 8, ite(ADC_TYPE_G, '1', '0'));
+      axiSlaveRegisterR(axilEp, x"00", 12, ite(SIMULATION_G, '1', '0'));
+
       axiSlaveRegisterR(axilEp, x"04", 0, r.dropFrameCnt);
+      axiSlaveRegisterR(axilEp, x"08", 0, r.eofeEventCnt);
+
+      axiSlaveRegister (axilEp, x"80", 0, v.awcache);
+      axiSlaveRegister (axilEp, x"80", 4, v.arcache);
+
+      axiSlaveRegister (axilEp, x"84", 0, v.enable);
+      axiSlaveRegister (axilEp, x"FC", 0, v.cntRst);
 
       -- Closeout the transaction
       axiSlaveDefault(axilEp, v.axilWriteSlave, v.axilReadSlave, AXI_RESP_DECERR_C);
 
       --------------------------------------------------------------------------------
-      -- Outputs
-      --------------------------------------------------------------------------------
 
-      -- AXI-Lite Outputs
+      -- Outputs
       axilWriteSlave <= r.axilWriteSlave;
       axilReadSlave  <= r.axilReadSlave;
-
-      -- Write Outputs
-      adcSlave     <= v.adcSlave;       -- comb (not registered) output
-      reorgMasters <= r.reorgMasters;
-      wrReq        <= r.wrReq;
-
-      -- Read Outputs
-      trigRdSlave   <= v.trigRdSlave;   -- comb (not registered) output
-      rdReq         <= r.rdReq;
-      trigHdrMaster <= r.trigHdrMaster;
 
       -- Reset
       if (rst = '1') then
@@ -340,6 +189,31 @@ begin
       end if;
    end process seq;
 
+   ------------
+   -- Write FSM
+   ------------
+   U_WriteFsm : entity nexo_daq_ring_buffer.RingBufferWriteFsm
+      generic map (
+         TPD_G          => TPD_G,
+         SIMULATION_G   => SIMULATION_G,
+         ADC_TYPE_G     => ADC_TYPE_G,
+         STREAM_INDEX_G => STREAM_INDEX_G)
+      port map (
+         -- Control/Monitor Interface
+         enable      => r.enable,
+         dropFrame   => dropFrame,
+         -- Clock and Reset
+         clk         => clk,
+         rst         => rst,
+         -- Compression Inbound Interface
+         adcMaster   => adcMaster,
+         adcSlave    => adcSlave,
+         -- DMA Write Interface
+         wrReq       => wrReq,
+         wrAck       => wrAck,
+         writeMaster => writeMaster,
+         writeSlave  => writeSlave);
+
    --------------------------------
    -- DMA Engine for the DDR Memory
    --------------------------------
@@ -351,23 +225,50 @@ begin
          -- Clock and Reset
          clk            => clk,
          rst            => rst,
-         -- Inbound AXI Streams Interface
-         reorgMasters   => reorgMasters,
-         reorgSlaves    => reorgSlaves,
-         -- Outbound AXI Stream Interface
-         readMaster     => readMaster,
-         readSlave      => readSlave,
-         -- DMA Control Interface
+         -- Inbound AXI Stream Interface
+         awcache        => r.awcache,
          wrReq          => wrReq,
          wrAck          => wrAck,
-         wrHdr          => wrHdr,
+         wrMaster       => writeMaster,
+         wrSlave        => writeSlave,
+         -- Outbound AXI Stream Interface
+         arcache        => r.arcache,
          rdReq          => rdReq,
          rdAck          => rdAck,
+         rdMaster       => readMaster,
+         rdSlave        => readSlave,
          -- AXI4 Interface
          axiWriteMaster => axiWriteMaster,
          axiWriteSlave  => axiWriteSlave,
          axiReadMaster  => axiReadMaster,
          axiReadSlave   => axiReadSlave);
+
+   ------------
+   -- Read FSM
+   ------------
+   U_ReadFsm : entity nexo_daq_ring_buffer.RingBufferReadFsm
+      generic map (
+         TPD_G            => TPD_G,
+         SIMULATION_G     => SIMULATION_G,
+         ADC_TYPE_G       => ADC_TYPE_G,
+         DDR_DIMM_INDEX_G => DDR_DIMM_INDEX_G,
+         STREAM_INDEX_G   => STREAM_INDEX_G)
+      port map (
+         -- Control/Monitor Interface
+         enable        => r.enable,
+         eofeEvent     => eofeEvent,
+         -- Clock and Reset
+         clk           => clk,
+         rst           => rst,
+         -- DMA Read Interface
+         rdReq         => rdReq,
+         rdAck         => rdAck,
+         -- Trigger Decision Interface
+         trigRdMaster  => trigRdMaster,
+         trigRdSlave   => trigRdSlave,
+         -- Trigger Header Interface
+         trigHdrMaster => trigHdrMaster,
+         trigHdrSlave  => trigHdrSlave);
 
    ----------------------------
    -- Insert the Trigger header

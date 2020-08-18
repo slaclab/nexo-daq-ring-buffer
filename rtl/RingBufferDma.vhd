@@ -40,17 +40,17 @@ entity RingBufferDma is
       clk            : in  sl;
       rst            : in  sl;
       -- Inbound AXI Stream Interface
-      reorgMasters   : in  AxiStreamMasterArray(15 downto 0);
-      reorgSlaves    : out AxiStreamSlaveArray(15 downto 0);
-      -- Outbound AXI Stream Interface
-      readMaster     : out AxiStreamMasterType;
-      readSlave      : in  AxiStreamSlaveType;
-      -- DMA Control Interface
+      awcache        : in slv(3 downto 0);
       wrReq          : in  AxiWriteDmaReqType;
       wrAck          : out AxiWriteDmaAckType;
-      wrHdr          : out AxiStreamMasterType;
+      wrMaster       : in  AxiStreamMasterType;
+      wrSlave        : out AxiStreamSlaveType;
+      -- Outbound AXI Stream Interface
+      arcache        : in slv(3 downto 0);
       rdReq          : in  AxiReadDmaReqType;
       rdAck          : out AxiReadDmaAckType;
+      rdMaster       : out AxiStreamMasterType;
+      rdSlave        : in  AxiStreamSlaveType;
       -- AXI4 Interface
       axiWriteMaster : out AxiWriteMasterType;
       axiWriteSlave  : in  AxiWriteSlaveType;
@@ -60,82 +60,33 @@ end RingBufferDma;
 
 architecture rtl of RingBufferDma is
 
-   signal writeMasters : AxiStreamMasterArray(15 downto 0);
-   signal writeSlaves  : AxiStreamSlaveArray(15 downto 0);
+   constant AXIS_CONFIG_C : AxiStreamConfigType := (
+      TSTRB_EN_C    => CHARGE_AXIS_CONFIG_C.TSTRB_EN_C,
+      TDATA_BYTES_C => (128/8),         -- 128-bit data interface
+      TDEST_BITS_C  => CHARGE_AXIS_CONFIG_C.TDEST_BITS_C,
+      TID_BITS_C    => CHARGE_AXIS_CONFIG_C.TID_BITS_C,
+      TKEEP_MODE_C  => CHARGE_AXIS_CONFIG_C.TKEEP_MODE_C,
+      TUSER_BITS_C  => CHARGE_AXIS_CONFIG_C.TUSER_BITS_C,
+      TUSER_MODE_C  => CHARGE_AXIS_CONFIG_C.TUSER_MODE_C);
+
+   constant AXI_CONFIG_C : AxiConfigType := (
+      ADDR_WIDTH_C => MEM_AXI_CONFIG_C.ADDR_WIDTH_C,
+      DATA_BYTES_C => (128/8),          -- 128-bit data interface
+      ID_BITS_C    => MEM_AXI_CONFIG_C.ID_BITS_C,
+      LEN_BITS_C   => MEM_AXI_CONFIG_C.LEN_BITS_C);
 
    signal writeMaster : AxiStreamMasterType;
    signal writeSlave  : AxiStreamSlaveType;
 
-   signal writeResizeMaster : AxiStreamMasterType;
-   signal writeResizeSlave  : AxiStreamSlaveType;
-
-   signal dmaIbMaster : AxiStreamMasterType;
-   signal dmaIbSlave  : AxiStreamSlaveType;
-
-   signal dmaObMaster : AxiStreamMasterType;
-   signal dmaObSlave  : AxiStreamSlaveType;
-   signal dmaObCtrl   : AxiStreamCtrlType;
-
-   signal readResizeMaster : AxiStreamMasterType;
-   signal readResizeSlave  : AxiStreamSlaveType;
+   signal readMaster : AxiStreamMasterType;
+   signal readSlave  : AxiStreamSlaveType;
 
 begin
 
-   --------------------------------------
-   -- Ring Buffer Stream Cache per stream
-   --------------------------------------
-   GEN_VEC :
-   for i in 15 downto 0 generate
-      U_RingBufferStream : entity surf.AxiStreamFifoV2
-         generic map (
-            -- General Configurations
-            TPD_G               => TPD_G,
-            INT_PIPE_STAGES_G   => 0,
-            PIPE_STAGES_G       => 0,
-            SLAVE_READY_EN_G    => true,
-            -- FIFO configurations
-            MEMORY_TYPE_G       => "block",
-            GEN_SYNC_FIFO_G     => true,
-            FIFO_ADDR_WIDTH_G   => 9,   -- 6kB/FIFO = 12-bytes x 512 entries
-            -- AXI Stream Port Configurations
-            SLAVE_AXI_CONFIG_G  => nexoAxisConfig(ADC_TYPE_G),
-            MASTER_AXI_CONFIG_G => nexoAxisConfig(ADC_TYPE_G))
-         port map (
-            -- Slave Port
-            sAxisClk    => clk,
-            sAxisRst    => rst,
-            sAxisMaster => reorgMasters(i),
-            sAxisSlave  => reorgSlaves(i),
-            -- Master Port
-            mAxisClk    => clk,
-            mAxisRst    => rst,
-            mAxisMaster => writeMasters(i),
-            mAxisSlave  => writeSlaves(i));
-   end generate GEN_VEC;
-
-   -----------------
-   -- AXI stream MUX
-   -----------------
-   U_Mux : entity surf.AxiStreamMux
-      generic map (
-         TPD_G         => TPD_G,
-         NUM_SLAVES_G  => 16,
-         PIPE_STAGES_G => 1)
-      port map (
-         -- Clock and reset
-         axisClk      => clk,
-         axisRst      => rst,
-         -- Slaves
-         sAxisMasters => writeMasters,
-         sAxisSlaves  => writeSlaves,
-         -- Master
-         mAxisMaster  => writeMaster,
-         mAxisSlave   => writeSlave);
-
-   --------------------------
-   -- Resize AXIS to 512-bits
-   --------------------------
-   U_IbResize : entity nexo_daq_ring_buffer.RingBufferAxisTo512b
+   --------------------------------------------
+   -- Resize to 128b with respect to ADC_TYPE_G
+   --------------------------------------------
+   U_WriteResize : entity nexo_daq_ring_buffer.ResizeAxisTo128b
       generic map (
          TPD_G      => TPD_G,
          ADC_TYPE_G => ADC_TYPE_G)
@@ -144,44 +95,11 @@ begin
          axisClk     => clk,
          axisRst     => rst,
          -- Slave Port
-         sAxisMaster => writeMaster,
-         sAxisSlave  => writeSlave,
+         sAxisMaster => wrMaster,
+         sAxisSlave  => wrSlave,
          -- Master Port
-         mAxisMaster => writeResizeMaster,
-         mAxisSlave  => writeResizeSlave);
-
-   ---------------------------------
-   -- Store and Forward Write Buffer
-   ---------------------------------
-   U_IbCache : entity surf.AxiStreamFifoV2
-      generic map (
-         -- General Configurations
-         TPD_G               => TPD_G,
-         INT_PIPE_STAGES_G   => 0,
-         PIPE_STAGES_G       => 0,
-         SLAVE_READY_EN_G    => true,
-         VALID_THOLD_G       => 0,      -- 0 = only when frame ready
-         -- FIFO configurations
-         MEMORY_TYPE_G       => "block",
-         GEN_SYNC_FIFO_G     => true,
-         FIFO_ADDR_WIDTH_G   => 9,
-         -- AXI Stream Port Configurations
-         SLAVE_AXI_CONFIG_G  => DDR_AXIS_CONFIG_C,
-         MASTER_AXI_CONFIG_G => DDR_AXIS_CONFIG_C)
-      port map (
-         -- Slave Port
-         sAxisClk    => clk,
-         sAxisRst    => rst,
-         sAxisMaster => writeResizeMaster,
-         sAxisSlave  => writeResizeSlave,
-         -- Master Port
-         mAxisClk    => clk,
-         mAxisRst    => rst,
-         mAxisMaster => dmaIbMaster,
-         mAxisSlave  => dmaIbSlave);
-
-   -- Send a copy of the header to the FSM
-   wrHdr <= dmaIbMaster;
+         mAxisMaster => writeMaster,
+         mAxisSlave  => writeSlave);
 
    -----------------------
    -- DMA Write Controller
@@ -190,9 +108,11 @@ begin
       generic map (
          TPD_G          => TPD_G,
          AXI_READY_EN_G => true,
-         AXIS_CONFIG_G  => DDR_AXIS_CONFIG_C,
-         AXI_CONFIG_G   => MEM_AXI_CONFIG_C,
-         BYP_SHIFT_G    => true)        -- True = only 4kB address alignment
+         AXIS_CONFIG_G  => AXIS_CONFIG_C,
+         AXI_CONFIG_G   => AXI_CONFIG_C,
+         SW_CACHE_EN_G  => true,
+         BYP_CACHE_G    => true,
+         BYP_SHIFT_G    => true)   -- True = only 4kB address alignment
       port map (
          -- Clock and Reset
          axiClk         => clk,
@@ -200,9 +120,10 @@ begin
          -- DMA Control
          dmaReq         => wrReq,
          dmaAck         => wrAck,
+         swCache        => awcache,
          -- AXI Stream Interface
-         axisMaster     => dmaIbMaster,
-         axisSlave      => dmaIbSlave,
+         axisMaster     => writeMaster,
+         axisSlave      => writeSlave,
          -- AXI4 Interface
          axiWriteMaster => axiWriteMaster,
          axiWriteSlave  => axiWriteSlave);
@@ -213,9 +134,10 @@ begin
    U_DmaRead : entity surf.AxiStreamDmaRead
       generic map (
          TPD_G           => TPD_G,
-         AXIS_READY_EN_G => false,      -- Using pause flow control
-         AXIS_CONFIG_G   => DDR_AXIS_CONFIG_C,
-         AXI_CONFIG_G    => MEM_AXI_CONFIG_C,
+         AXIS_READY_EN_G => true,
+         AXIS_CONFIG_G   => AXIS_CONFIG_C,
+         AXI_CONFIG_G    => AXI_CONFIG_C,
+         SW_CACHE_EN_G   => true,
          BYP_SHIFT_G     => true)       -- True = only 4kB address alignment
       port map (
          -- Clock and Reset
@@ -224,50 +146,19 @@ begin
          -- DMA Control
          dmaReq        => rdReq,
          dmaAck        => rdAck,
+         swCache       => arcache,
          -- AXI Stream Interface
-         axisMaster    => dmaObMaster,
-         axisSlave     => dmaObSlave,
-         axisCtrl      => dmaObCtrl,
+         axisMaster    => readMaster,
+         axisSlave     => readSlave,
+         axisCtrl      => AXI_STREAM_CTRL_UNUSED_C,
          -- AXI4 Interface
          axiReadMaster => axiReadMaster,
          axiReadSlave  => axiReadSlave);
 
-   ---------------------------------
-   -- Store and Forward Read Buffer
-   ---------------------------------
-   U_ObCache : entity surf.AxiStreamFifoV2
-      generic map (
-         -- General Configurations
-         TPD_G               => TPD_G,
-         INT_PIPE_STAGES_G   => 0,
-         PIPE_STAGES_G       => 0,
-         SLAVE_READY_EN_G    => false,  -- Using pause flow control
-         -- FIFO configurations
-         MEMORY_TYPE_G       => "block",
-         GEN_SYNC_FIFO_G     => true,
-         FIFO_ADDR_WIDTH_G   => 9,
-         FIFO_FIXED_THRESH_G => true,
-         FIFO_PAUSE_THRESH_G => 256,    -- 50% of 32kB buffer
-         -- AXI Stream Port Configurations
-         SLAVE_AXI_CONFIG_G  => DDR_AXIS_CONFIG_C,
-         MASTER_AXI_CONFIG_G => DDR_AXIS_CONFIG_C)
-      port map (
-         -- Slave Port
-         sAxisClk    => clk,
-         sAxisRst    => rst,
-         sAxisMaster => dmaObMaster,
-         sAxisSlave  => dmaObSlave,
-         sAxisCtrl   => dmaObCtrl,
-         -- Master Port
-         mAxisClk    => clk,
-         mAxisRst    => rst,
-         mAxisMaster => readResizeMaster,
-         mAxisSlave  => readResizeSlave);
-
-   ----------------------------
-   -- Resize AXIS from 512-bits
-   ----------------------------
-   U_ObResize : entity nexo_daq_ring_buffer.RingBufferAxisFrom512b
+   ----------------------------------------------
+   -- Resize from 128b with respect to ADC_TYPE_G
+   ----------------------------------------------
+   U_ReadResize : entity nexo_daq_ring_buffer.ResizeAxisFrom128b
       generic map (
          TPD_G      => TPD_G,
          ADC_TYPE_G => ADC_TYPE_G)
@@ -276,10 +167,10 @@ begin
          axisClk     => clk,
          axisRst     => rst,
          -- Slave Port
-         sAxisMaster => readResizeMaster,
-         sAxisSlave  => readResizeSlave,
+         sAxisMaster => readMaster,
+         sAxisSlave  => readSlave,
          -- Master Port
-         mAxisMaster => readMaster,
-         mAxisSlave  => readSlave);
+         mAxisMaster => rdMaster,
+         mAxisSlave  => rdSlave);
 
 end rtl;

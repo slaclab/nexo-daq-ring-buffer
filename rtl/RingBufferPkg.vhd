@@ -25,6 +25,9 @@ use surf.AxiPkg.all;
 
 package RingBufferPkg is
 
+   -- Timestamp Width
+   constant TS_WIDTH_C : positive := 44;
+
    -- Number of photon channels: 480 ASIC links x 16 channels/link = 7680
    constant NUM_PHOTON_CH_C : positive := 480*16;
 
@@ -44,26 +47,16 @@ package RingBufferPkg is
    constant CHARGE_AXIS_CONFIG_C : AxiStreamConfigType := (
       TSTRB_EN_C    => false,
       TDATA_BYTES_C => (96/8),  -- 96-bit data interface (8 x 12-bit ADCs)
-      TDEST_BITS_C  => 8,
-      TID_BITS_C    => 8,
+      TDEST_BITS_C  => 0,
+      TID_BITS_C    => 0,
       TKEEP_MODE_C  => TKEEP_COMP_C,
-      TUSER_BITS_C  => 8,
+      TUSER_BITS_C  => 2, -- BIT0 = EOFE, BIT1 = SOF
       TUSER_MODE_C  => TUSER_FIRST_LAST_C);
 
    -- Photon System AXI stream Configuration
    constant PHOTON_AXIS_CONFIG_C : AxiStreamConfigType := (
       TSTRB_EN_C    => CHARGE_AXIS_CONFIG_C.TSTRB_EN_C,
       TDATA_BYTES_C => (80/8),  -- 80-bit data interface (8 x 10-bit ADCs)
-      TDEST_BITS_C  => CHARGE_AXIS_CONFIG_C.TDEST_BITS_C,
-      TID_BITS_C    => CHARGE_AXIS_CONFIG_C.TID_BITS_C,
-      TKEEP_MODE_C  => CHARGE_AXIS_CONFIG_C.TKEEP_MODE_C,
-      TUSER_BITS_C  => CHARGE_AXIS_CONFIG_C.TUSER_BITS_C,
-      TUSER_MODE_C  => CHARGE_AXIS_CONFIG_C.TUSER_MODE_C);
-
-   -- DDR AXI Stream DMA Configuration
-   constant DDR_AXIS_CONFIG_C : AxiStreamConfigType := (
-      TSTRB_EN_C    => CHARGE_AXIS_CONFIG_C.TSTRB_EN_C,
-      TDATA_BYTES_C => (512/8),         -- 512-bit data interface
       TDEST_BITS_C  => CHARGE_AXIS_CONFIG_C.TDEST_BITS_C,
       TID_BITS_C    => CHARGE_AXIS_CONFIG_C.TID_BITS_C,
       TKEEP_MODE_C  => CHARGE_AXIS_CONFIG_C.TKEEP_MODE_C,
