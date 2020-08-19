@@ -37,7 +37,7 @@ end ResizeAxisFrom128b;
 
 architecture mapping of ResizeAxisFrom128b is
 
-   component Axis128to96b
+   component Axis128bto96b
       port (
          aclk          : in  std_logic;
          aresetn       : in  std_logic;
@@ -60,7 +60,7 @@ architecture mapping of ResizeAxisFrom128b is
          );
    end component;
 
-   component Axis128to80b
+   component Axis128bto80b
       port (
          aclk          : in  std_logic;
          aresetn       : in  std_logic;
@@ -90,7 +90,7 @@ begin
    axisRstL <= not(axisRst);
 
    GEN_CHARGE : if (ADC_TYPE_G = true) generate
-      U_Resize : Axis128to96b
+      U_Resize : Axis128bto96b
          port map (
             -- Clock and reset
             aclk          => axisClk,
@@ -116,7 +116,7 @@ begin
    end generate;
 
    GEN_PHOTON : if (ADC_TYPE_G = false) generate
-      U_Resize : Axis128to80b
+      U_Resize : Axis128bto80b
          port map (
             -- Clock and reset
             aclk          => axisClk,

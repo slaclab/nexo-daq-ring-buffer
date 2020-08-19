@@ -76,8 +76,8 @@ architecture rtl of RateGenerator is
       timestamp      : slv(TS_WIDTH_C-1 downto 0);
       eventCnt       : slv(47 downto 0);
       adcWrd         : natural range 0 to 15;
-      adcMaster      : AxiStreamMasterType;
-      trigRdMaster   : AxiStreamMasterType;
+      adcTxMaster    : AxiStreamMasterType;
+      trigTxMaster   : AxiStreamMasterType;
       state          : StateType;
       axilReadSlave  : AxiLiteReadSlaveType;
       axilWriteSlave : AxiLiteWriteSlaveType;
@@ -89,14 +89,19 @@ architecture rtl of RateGenerator is
       timestamp      => (others => '0'),
       eventCnt       => (others => '0'),
       adcWrd         => 0,
-      adcMaster      => AXI_STREAM_MASTER_INIT_C,
-      trigRdMaster   => AXI_STREAM_MASTER_INIT_C,
+      adcTxMaster    => AXI_STREAM_MASTER_INIT_C,
+      trigTxMaster   => AXI_STREAM_MASTER_INIT_C,
       state          => IDLE_S,
       axilReadSlave  => AXI_LITE_READ_SLAVE_INIT_C,
       axilWriteSlave => AXI_LITE_WRITE_SLAVE_INIT_C);
 
    signal r   : RegType := REG_INIT_C;
    signal rin : RegType;
+
+   signal axilReadMaster  : AxiLiteReadMasterType;
+   signal axilReadSlave   : AxiLiteReadSlaveType;
+   signal axilWriteMaster : AxiLiteWriteMasterType;
+   signal axilWriteSlave  : AxiLiteWriteSlaveType;
 
    signal adcTxSlave  : AxiStreamSlaveType;
    signal trigTxSlave : AxiStreamSlaveType;

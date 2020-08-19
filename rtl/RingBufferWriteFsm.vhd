@@ -255,7 +255,7 @@ begin
       if (writeSlave.tReady = '0') then
          v.writeMaster.tValid := '0';
          v.writeMaster.tLast  := '0';
-         v.writeMaster.tKeep  := (others = '1');
+         v.writeMaster.tKeep  := (others => '1');
       end if;
 
       -- State machine

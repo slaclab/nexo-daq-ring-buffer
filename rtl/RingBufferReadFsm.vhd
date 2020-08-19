@@ -41,6 +41,7 @@ entity RingBufferReadFsm is
    port (
       -- Control/Monitor Interface
       enable       : in  sl;
+      dropTrig     : out sl;
       eofeEvent    : out sl;
       -- Clock and Reset
       clk          : in  sl;
@@ -63,7 +64,9 @@ architecture rtl of RingBufferReadFsm is
    type StateType is (
       IDLE_S,
       DMA_REQ_S,
-      IDLE_S);
+      TRIG_HDR_S,
+      DATA_HDR_S,
+      MOVE_S);
 
    type RegType is record
       -- Trigger Message
@@ -71,6 +74,7 @@ architecture rtl of RingBufferReadFsm is
       eventType   : slv(15 downto 0);
       readSize    : slv(11 downto 0);
       startTime   : slv(TS_WIDTH_C-1 downto 0);
+      dropTrig    : sl;
       -- Readout Signals
       rdReq       : AxiReadDmaReqType;
       readTime    : slv(TS_WIDTH_C-1 downto 0);
@@ -92,6 +96,7 @@ architecture rtl of RingBufferReadFsm is
       eventType   => (others => '0'),
       readSize    => (others => '0'),
       startTime   => (others => '0'),
+      dropTrig    => '0',
       -- Readout Signals
       rdReq       => AXI_READ_DMA_REQ_INIT_C,
       readTime    => (others => '0'),
@@ -112,14 +117,14 @@ architecture rtl of RingBufferReadFsm is
 
 begin
 
-   comb : process (compSlave, r, rdAck, readMaster, rst, trigRdMaster) is
-      variable v      : RegType;
-      variable axilEp : AxiLiteEndPointType;
+   comb : process (compSlave, enable, r, rdAck, readMaster, rst, trigRdMaster) is
+      variable v : RegType;
    begin
       -- Latch the current value
       v := r;
 
       -- Reset the strobes
+      v.dropTrig      := '0';
       v.rdReq.request := '0';
 
       -- AXI Stream Flow Control
@@ -128,7 +133,7 @@ begin
       if (compSlave.tReady = '0') then
          v.compMaster.tValid := '0';
          v.compMaster.tLast  := '0';
-         v.compMaster.tUser  := (others = '0');
+         v.compMaster.tUser  := (others => '0');
       end if;
 
       ------------------------------
@@ -157,8 +162,10 @@ begin
                -- Accept the data
                v.trigRdSlave.tReady := '1';
 
-               -- Check if single word transfer
-               if (ssiGetUserSof(TRIG_DECISION_AXIS_CONFIG_C, trigRdMaster) = '1') and (trigRdMaster.tLast = '1') then
+               -- Check if single word transfer with no errors in frame
+               if (trigRdMaster.tLast = '1')
+                  and (ssiGetUserSof(TRIG_DECISION_AXIS_CONFIG_C, trigRdMaster) = '1')
+                  and (ssiGetUserEofe(TRIG_DECISION_AXIS_CONFIG_C, trigRdMaster) = '0') then
 
                   -- Latch the trigger message
                   v.eventID   := trigRdMaster.tData(31 downto 0);   -- 32-bit
@@ -173,12 +180,17 @@ begin
                   v.trimStart := v.startTime(7 downto 0);
 
                   -- Check if this engine is enabled and single transfer
-                  if (r.enable = '1') then
+                  if (enable = '1') then
 
                      -- Next state
                      v.state := DMA_REQ_S;
 
                   end if;
+
+               else
+
+                  -- Set the error flag
+                  v.dropTrig := trigRdMaster.tLast;
 
                end if;
 
@@ -382,6 +394,7 @@ begin
       readSlave   <= v.readSlave;       -- comb (not registered) output
       rdReq       <= r.rdReq;
       compMaster  <= r.compMaster;
+      dropTrig    <= r.dropTrig;
       eofeEvent   <= r.eofe and r.compMaster.tValid and r.compMaster.tLast and compSlave.tReady;
 
       -- Reset

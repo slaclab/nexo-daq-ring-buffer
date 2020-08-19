@@ -73,6 +73,7 @@ architecture rtl of RingBufferEngine is
       awcache        : slv(3 downto 0);
       arcache        : slv(3 downto 0);
       dropFrameCnt   : slv(31 downto 0);
+      dropTrigCnt    : slv(31 downto 0);
       eofeEventCnt   : slv(31 downto 0);
       -- AXI-Lite
       axilReadSlave  : AxiLiteReadSlaveType;
@@ -84,6 +85,7 @@ architecture rtl of RingBufferEngine is
       awcache        => "0010",         -- Merge-able writes
       arcache        => "1111",
       dropFrameCnt   => (others => '0'),
+      dropTrigCnt    => (others => '0'),
       eofeEventCnt   => (others => '0'),
       -- AXI-Lite
       axilReadSlave  => AXI_LITE_READ_SLAVE_INIT_C,
@@ -93,6 +95,7 @@ architecture rtl of RingBufferEngine is
    signal rin : RegType;
 
    signal dropFrame : sl;
+   signal dropTrig  : sl;
    signal eofeEvent : sl;
 
    signal wrReq : AxiWriteDmaReqType;
@@ -112,8 +115,8 @@ architecture rtl of RingBufferEngine is
 
 begin
 
-   comb : process (axilReadMaster, axilWriteMaster, dropFrame, eofeEvent, r,
-                   rst) is
+   comb : process (axilReadMaster, axilWriteMaster, dropFrame, dropTrig,
+                   eofeEvent, r, rst) is
       variable v      : RegType;
       variable axilEp : AxiLiteEndPointType;
    begin
@@ -129,6 +132,12 @@ begin
          v.dropFrameCnt := r.dropFrameCnt + 1;
       end if;
 
+      -- Check for dropped frame flag
+      if (dropTrig = '1') then
+         -- Increment the error counter
+         v.dropTrigCnt := r.dropTrigCnt + 1;
+      end if;
+
       -- Check for eofeEvent flag
       if (eofeEvent = '1') then
          -- Increment the error counter
@@ -138,6 +147,7 @@ begin
       -- Check for counter reset
       if (r.cntRst = '1') then
          v.dropFrameCnt := (others => '0');
+         v.dropTrigCnt  := (others => '0');
          v.eofeEventCnt := (others => '0');
       end if;
 
@@ -154,13 +164,14 @@ begin
       axiSlaveRegisterR(axilEp, x"00", 8, ite(ADC_TYPE_G, '1', '0'));
       axiSlaveRegisterR(axilEp, x"00", 12, ite(SIMULATION_G, '1', '0'));
 
-      axiSlaveRegisterR(axilEp, x"04", 0, r.dropFrameCnt);
-      axiSlaveRegisterR(axilEp, x"08", 0, r.eofeEventCnt);
+      axiSlaveRegisterR(axilEp, x"10", 0, r.dropFrameCnt);
+      axiSlaveRegisterR(axilEp, x"14", 0, r.dropTrigCnt);
+      axiSlaveRegisterR(axilEp, x"18", 0, r.eofeEventCnt);
 
-      axiSlaveRegister (axilEp, x"80", 0, v.awcache);
-      axiSlaveRegister (axilEp, x"80", 4, v.arcache);
+      axiSlaveRegister (axilEp, x"80", 0, v.enable);
+      axiSlaveRegister (axilEp, x"84", 0, v.awcache);
+      axiSlaveRegister (axilEp, x"88", 0, v.arcache);
 
-      axiSlaveRegister (axilEp, x"84", 0, v.enable);
       axiSlaveRegister (axilEp, x"FC", 0, v.cntRst);
 
       -- Closeout the transaction
@@ -255,39 +266,22 @@ begin
          STREAM_INDEX_G   => STREAM_INDEX_G)
       port map (
          -- Control/Monitor Interface
-         enable        => r.enable,
-         eofeEvent     => eofeEvent,
+         enable       => r.enable,
+         dropTrig     => dropTrig,
+         eofeEvent    => eofeEvent,
          -- Clock and Reset
-         clk           => clk,
-         rst           => rst,
-         -- DMA Read Interface
-         rdReq         => rdReq,
-         rdAck         => rdAck,
+         clk          => clk,
+         rst          => rst,
          -- Trigger Decision Interface
-         trigRdMaster  => trigRdMaster,
-         trigRdSlave   => trigRdSlave,
-         -- Trigger Header Interface
-         trigHdrMaster => trigHdrMaster,
-         trigHdrSlave  => trigHdrSlave);
-
-   ----------------------------
-   -- Insert the Trigger header
-   ----------------------------
-   U_InsertTrigHdr : entity nexo_daq_ring_buffer.RingBufferInsertTrigHdr
-      generic map (
-         TPD_G => TPD_G)
-      port map (
-         -- Clock and Reset
-         clk           => clk,
-         rst           => rst,
-         -- Trigger Header
-         trigHdrMaster => trigHdrMaster,
-         trigHdrSlave  => trigHdrSlave,
-         -- Slave Port
-         sAxisMaster   => readMaster,
-         sAxisSlave    => readSlave,
-         -- Master Port
-         mAxisMaster   => compMaster,
-         mAxisSlave    => compSlave);
+         trigRdMaster => trigRdMaster,
+         trigRdSlave  => trigRdSlave,
+         -- DMA Read Interface
+         rdReq        => rdReq,
+         rdAck        => rdAck,
+         readMaster   => readMaster,
+         readSlave    => readSlave,
+         -- Compression Inbound Interface
+         compMaster   => compMaster,
+         compSlave    => compSlave);
 
 end rtl;
