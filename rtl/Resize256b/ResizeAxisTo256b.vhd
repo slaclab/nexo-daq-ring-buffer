@@ -66,12 +66,12 @@ architecture mapping of ResizeAxisTo256b is
          aresetn       : in  std_logic;
          s_axis_tvalid : in  std_logic;
          s_axis_tready : out std_logic;
-         s_axis_tdata  : in  std_logic_vector(95 downto 0);
-         s_axis_tkeep  : in  std_logic_vector(11 downto 0);
+         s_axis_tdata  : in  std_logic_vector(79 downto 0);
+         s_axis_tkeep  : in  std_logic_vector(9 downto 0);
          s_axis_tlast  : in  std_logic;
          s_axis_tid    : in  std_logic_vector(7 downto 0);
          s_axis_tdest  : in  std_logic_vector(7 downto 0);
-         s_axis_tuser  : in  std_logic_vector(95 downto 0);
+         s_axis_tuser  : in  std_logic_vector(79 downto 0);
          m_axis_tvalid : out std_logic;
          m_axis_tready : in  std_logic;
          m_axis_tdata  : out std_logic_vector(255 downto 0);
