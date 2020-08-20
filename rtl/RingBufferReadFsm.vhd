@@ -34,13 +34,13 @@ use nexo_daq_trigger_decision.TriggerDecisionPkg.all;
 entity RingBufferReadFsm is
    generic (
       TPD_G            : time    := 1 ns;
-      SIMULATION_G     : boolean := false;
       ADC_TYPE_G       : boolean := true;  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
       DDR_DIMM_INDEX_G : natural := 0;
       STREAM_INDEX_G   : natural := 0);
    port (
       -- Control/Monitor Interface
       enable       : in  sl;
+      calMode      : in  sl;
       dropTrig     : out sl;
       eofeEvent    : out sl;
       -- Clock and Reset
@@ -117,7 +117,8 @@ architecture rtl of RingBufferReadFsm is
 
 begin
 
-   comb : process (compSlave, enable, r, rdAck, readMaster, rst, trigRdMaster) is
+   comb : process (calMode, compSlave, enable, r, rdAck, readMaster, rst,
+                   trigRdMaster) is
       variable v : RegType;
    begin
       -- Latch the current value
@@ -179,8 +180,8 @@ begin
                   -- Init the trimStart
                   v.trimStart := v.startTime(7 downto 0);
 
-                  -- Check if this engine is enabled and single transfer
-                  if (enable = '1') then
+                  -- Check if this engine is enabled and not in calibration mode
+                  if (enable = '1') and (calMode = '0') then
 
                      -- Next state
                      v.state := DMA_REQ_S;
@@ -227,8 +228,13 @@ begin
                -- Write the Trigger header
                v.compMaster.tValid := '1';
 
-               -- Insert the SOF bit
+               -- Insert the SOF (Start of Frame) bit
                ssiSetUserSof(nexoAxisConfig(ADC_TYPE_G), v.compMaster, '1');
+
+               -- Insert the SOR (Start of Readout) bit
+               if (r.readCh = 0) then
+                  nexoSetUserSor(nexoAxisConfig(ADC_TYPE_G), v.compMaster, '1');
+               end if;
 
                -- Trigger Decision's Event ID
                v.compMaster.tData(31 downto 0) := r.eventID;
@@ -320,11 +326,16 @@ begin
                   -- Check if last sample
                   if (r.readCnt = r.readSize) then
 
-                     -- Terminate the frame
+                      -- Set EOF (End of Frame)
                      v.compMaster.tLast := '1';
 
-                     -- Insert the EOFE bit
+                     -- Insert the EOFE (End of frame with Error) bit
                      ssiSetUserEofe(nexoAxisConfig(ADC_TYPE_G), v.compMaster, r.eofe);
+
+                     -- Insert the EOR (End of Readout) bit
+                     if (r.readCh = 15) then
+                        nexoSetUserEor(nexoAxisConfig(ADC_TYPE_G), v.compMaster, '1');
+                     end if;
 
                      -- Reset the flag
                      v.tValid := '0';

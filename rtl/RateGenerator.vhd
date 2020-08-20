@@ -43,8 +43,8 @@ entity RateGenerator is
       -- ADC Interface
       adcClk           : in  sl;
       adcRst           : in  sl;
-      adcMaster        : out AxiStreamMasterType;
-      adcSlave         : in  AxiStreamSlaveType;
+      adcMasters       : out AxiStreamMasterArray(14 downto 0);
+      adcSlaves        : in  AxiStreamSlaveArray(14 downto 0);
       -- Trigger Decision Interface
       trigClk          : in  sl;
       trigRst          : in  sl;
@@ -70,26 +70,30 @@ architecture rtl of RateGenerator is
       TRIG_S);
 
    type RegType is record
+      trigRate       : slv(15 downto 0);
+      trigCnt        : slv(15 downto 0);
       timer          : natural range 0 to TIMER_C;
       cntRst         : sl;
       dropCnt        : slv(31 downto 0);
       timestamp      : slv(TS_WIDTH_C-1 downto 0);
       eventCnt       : slv(47 downto 0);
       adcWrd         : natural range 0 to 15;
-      adcTxMaster    : AxiStreamMasterType;
+      adcTxMasters   : AxiStreamMasterArray(14 downto 0);
       trigTxMaster   : AxiStreamMasterType;
       state          : StateType;
       axilReadSlave  : AxiLiteReadSlaveType;
       axilWriteSlave : AxiLiteWriteSlaveType;
    end record;
    constant REG_INIT_C : RegType := (
+      trigRate       => (others => '1'),
+      trigCnt        => (others => '1'),
       timer          => TIMER_C,
       cntRst         => '0',
       dropCnt        => (others => '0'),
       timestamp      => (others => '0'),
       eventCnt       => (others => '0'),
       adcWrd         => 0,
-      adcTxMaster    => AXI_STREAM_MASTER_INIT_C,
+      adcTxMasters   => (others => AXI_STREAM_MASTER_INIT_C),
       trigTxMaster   => AXI_STREAM_MASTER_INIT_C,
       state          => IDLE_S,
       axilReadSlave  => AXI_LITE_READ_SLAVE_INIT_C,
@@ -103,7 +107,7 @@ architecture rtl of RateGenerator is
    signal axilWriteMaster : AxiLiteWriteMasterType;
    signal axilWriteSlave  : AxiLiteWriteSlaveType;
 
-   signal adcTxSlave  : AxiStreamSlaveType;
+   signal adcTxSlaves : AxiStreamSlaveArray(14 downto 0);
    signal trigTxSlave : AxiStreamSlaveType;
 
 begin
@@ -132,11 +136,12 @@ begin
          mAxiWriteMaster => axilWriteMaster,
          mAxiWriteSlave  => axilWriteSlave);
 
-   comb : process (adcTxSlave, axilReadMaster, axilWriteMaster, coreRst, r,
+   comb : process (adcTxSlaves, axilReadMaster, axilWriteMaster, coreRst, r,
                    trigTxSlave) is
       variable v      : RegType;
       variable axilEp : AxiLiteEndPointType;
       variable i      : natural;
+      variable txRdy  : sl;
    begin
       -- Latch the current value
       v := r;
@@ -151,10 +156,16 @@ begin
       end if;
 
       -- AXI Stream Flow Control
-      if (adcTxSlave.tReady = '0') then
-         v.adcTxMaster.tValid := '0';
-         v.adcTxMaster.tLast  := '0';
-      end if;
+      txRdy := '1';
+      for i in 0 to 14 loop
+         if (r.adcTxMasters(i).tValid = '1') then
+            txRdy := '0';
+         end if;
+         if (adcTxSlaves(i).tReady = '0') then
+            v.adcTxMasters(i).tValid := '0';
+            v.adcTxMasters(i).tLast  := '0';
+         end if;
+      end loop;
 
       if (trigTxSlave.tReady = '0') then
          v.trigTxMaster.tValid := '0';
@@ -178,12 +189,14 @@ begin
          ----------------------------------------------------------------------
          when ADC_HDR_S =>
             -- Check if ready to move data
-            if (v.adcTxMaster.tValid = '0') then
+            if (txRdy = '1') then
 
-               -- Write the Data header
-               v.adcTxMaster.tValid                       := '1';
-               v.adcTxMaster.tData(TS_WIDTH_C-1 downto 0) := r.timestamp;
-               v.adcTxMaster.tData(95 downto TS_WIDTH_C)  := (others => '0');
+               for i in 0 to 14 loop
+                  -- Write the Data header
+                  v.adcTxMasters(i).tValid                       := '1';
+                  v.adcTxMasters(i).tData(TS_WIDTH_C-1 downto 0) := r.timestamp;
+                  v.adcTxMasters(i).tData(95 downto TS_WIDTH_C)  := (others => '0');
+               end loop;
 
                -- Next state
                v.state := ADC_DATA_S;
@@ -192,19 +205,23 @@ begin
          ----------------------------------------------------------------------
          when ADC_DATA_S =>
             -- Check if ready to move data
-            if (v.adcTxMaster.tValid = '0') then
+            if (txRdy = '1') then
 
-               -- Write the Data header
-               v.adcTxMaster.tValid := '1';
-               if ADC_TYPE_G then
-                  for i in 0 to 7 loop
-                     v.adcTxMaster.tData(12*i+11 downto 12*i) := toSlv(r.adcWrd*8+i, 12);
-                  end loop;
-               else
-                  for i in 0 to 7 loop
-                     v.adcTxMaster.tData(10*i+9 downto 10*i) := toSlv(r.adcWrd*8+i, 10);
-                  end loop;
-               end if;
+               for i in 0 to 14 loop
+
+                  -- Write the Data header
+                  v.adcTxMasters(i).tValid := '1';
+                  if ADC_TYPE_G then
+                     for j in 0 to 7 loop
+                        v.adcTxMasters(i).tData(12*i+11 downto 12*i) := toSlv((128*i+r.adcWrd*8+j) mod 2**12, 12);
+                     end loop;
+                  else
+                     for j in 0 to 7 loop
+                        v.adcTxMasters(i).tData(10*i+9 downto 10*i) := toSlv((128*i+r.adcWrd*8+j) mod 2**10, 10);
+                     end loop;
+                  end if;
+
+               end loop;
 
                -- Check for last work
                if (r.adcWrd = 15) then
@@ -213,7 +230,9 @@ begin
                   v.adcWrd := 0;
 
                   -- Terminate the frame
-                  v.adcTxMaster.tLast := '1';
+                  for i in 0 to 14 loop
+                     v.adcTxMasters(i).tLast := '1';
+                  end loop;
 
                   -- Increment the counter
                   v.timestamp := r.timestamp + 1;
@@ -221,8 +240,24 @@ begin
                   -- Check trigger
                   if r.timestamp(11 downto 0) = 4095 then
 
-                     -- Next state
-                     v.state := TRIG_S;
+                     -- Check for trigger decision
+                     if (r.trigCnt = 0) then
+
+                        -- Preset the counter
+                        v.trigCnt := r.trigRate;
+
+                        -- Next state
+                        v.state := TRIG_S;
+
+                     else
+
+                        -- Decrement the counter
+                        v.trigCnt := r.trigCnt - 1;
+
+                        -- Next state
+                        v.state := IDLE_S;
+
+                     end if;
 
                   else
 
@@ -247,6 +282,9 @@ begin
                v.trigTxMaster.tValid := '1';
                v.trigTxMaster.tLast  := '1';
 
+               -- Insert the SOF bit
+               ssiSetUserSof(TRIG_DECISION_AXIS_CONFIG_C, v.trigTxMaster, '1');
+
                v.trigTxMaster.tData(31 downto 0)   := r.eventCnt(31 downto 0);  -- Event ID
                v.trigTxMaster.tData(47 downto 32)  := r.eventCnt(47 downto 32);  -- Event Type
                v.trigTxMaster.tData(59 downto 48)  := toSlv(4095, 12);  -- Readout Size = 4096 time slices
@@ -254,8 +292,6 @@ begin
 
                -- Increment the counter
                v.eventCnt := r.eventCnt + 1;
-
-               -- Check for roll
 
                -- Next state
                v.state := IDLE_S;
@@ -268,22 +304,31 @@ begin
       -- AXI-Lite Register Transactions
       --------------------------------------------------------------------------------
 
-      -- Reset strobes
-      v.cntRst := '0';
-
       -- Determine the transaction type
       axiSlaveWaitTxn(axilEp, axilWriteMaster, axilReadMaster, v.axilWriteSlave, v.axilReadSlave);
 
       -- Map the read registers
       axiSlaveRegisterR(axilEp, x"00", 0, r.dropCnt);
-      axiSlaveRegister (axilEp, x"80", 0, v.cntRst);
+      axiSlaveRegister (axilEp, x"80", 0, v.trigRate);
+      axiSlaveRegister (axilEp, x"FC", 0, v.cntRst);
 
       -- Closeout the transaction
       axiSlaveDefault(axilEp, v.axilWriteSlave, v.axilReadSlave, AXI_RESP_DECERR_C);
 
+      --------------------------------------------------------------------------------
+
+      -- Reset strobes
+      v.cntRst := '0';
+
       -- Check for counter reset
       if (r.cntRst = '1') then
          v.dropCnt := (others => '0');
+      end if;
+
+      -- Check for change in trigger rate
+      if (r.trigRate /= v.trigRate) then
+         -- Preset the counter
+         v.trigCnt := v.trigRate;
       end if;
 
       --------------------------------------------------------------------------------
@@ -309,30 +354,32 @@ begin
       end if;
    end process seq;
 
-   U_ASYNC_ADC : entity surf.AxiStreamFifoV2
-      generic map (
-         -- General Configurations
-         TPD_G               => TPD_G,
-         INT_PIPE_STAGES_G   => 0,
-         PIPE_STAGES_G       => 0,
-         -- FIFO configurations
-         MEMORY_TYPE_G       => "distributed",
-         GEN_SYNC_FIFO_G     => false,
-         FIFO_ADDR_WIDTH_G   => 5,
-         -- AXI Stream Port Configurations
-         SLAVE_AXI_CONFIG_G  => nexoAxisConfig(ADC_TYPE_G),
-         MASTER_AXI_CONFIG_G => nexoAxisConfig(ADC_TYPE_G))
-      port map (
-         -- Slave Port
-         sAxisClk    => coreClk,
-         sAxisRst    => coreRst,
-         sAxisMaster => r.adcTxMaster,
-         sAxisSlave  => adcTxSlave,
-         -- Master Port
-         mAxisClk    => adcClk,
-         mAxisRst    => adcRst,
-         mAxisMaster => adcMaster,
-         mAxisSlave  => adcSlave);
+   GEN_VEC : for i in 14 downto 0 generate
+      U_ASYNC_ADC : entity surf.AxiStreamFifoV2
+         generic map (
+            -- General Configurations
+            TPD_G               => TPD_G,
+            INT_PIPE_STAGES_G   => 0,
+            PIPE_STAGES_G       => 0,
+            -- FIFO configurations
+            MEMORY_TYPE_G       => "distributed",
+            GEN_SYNC_FIFO_G     => false,
+            FIFO_ADDR_WIDTH_G   => 5,
+            -- AXI Stream Port Configurations
+            SLAVE_AXI_CONFIG_G  => nexoAxisConfig(ADC_TYPE_G),
+            MASTER_AXI_CONFIG_G => nexoAxisConfig(ADC_TYPE_G))
+         port map (
+            -- Slave Port
+            sAxisClk    => coreClk,
+            sAxisRst    => coreRst,
+            sAxisMaster => r.adcTxMasters(i),
+            sAxisSlave  => adcTxSlaves(i),
+            -- Master Port
+            mAxisClk    => adcClk,
+            mAxisRst    => adcRst,
+            mAxisMaster => adcMasters(i),
+            mAxisSlave  => adcSlaves(i));
+   end generate GEN_VEC;
 
    U_ASYNC_TRIG : entity surf.AxiStreamFifoV2
       generic map (

@@ -10,6 +10,121 @@
 
 import pyrogue as pr
 
-class Core(pr.Device):
+class StreamEngine(pr.Device):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+        self.add(pr.RemoteVariable(
+            name         = 'STREAM_INDEX_G',
+            offset       = 0x00,
+            bitSize      = 4,
+            bitOffset    = 0,
+            mode         = 'RO',
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'DDR_DIMM_INDEX_G',
+            offset       = 0x00,
+            bitSize      = 4,
+            bitOffset    = 4,
+            mode         = 'RO',
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ADC_TYPE_G',
+            offset       = 0x00,
+            bitSize      = 1,
+            bitOffset    = 8,
+            mode         = 'RO',
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'SIMULATION_G',
+            offset       = 0x00,
+            bitSize      = 1,
+            bitOffset    = 12,
+            mode         = 'RO',
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'DropFrameCnt',
+            offset       = 0x10,
+            bitSize      = 32,
+            mode         = 'RO',
+            disp         = '{:d}',
+            pollInterval = 1,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'DropTrigCnt',
+            offset       = 0x14,
+            bitSize      = 32,
+            mode         = 'RO',
+            disp         = '{:d}',
+            pollInterval = 1,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'EofeEventCnt',
+            offset       = 0x18,
+            bitSize      = 32,
+            mode         = 'RO',
+            disp         = '{:d}',
+            pollInterval = 1,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'CalEventID',
+            offset       = 0x1C,
+            bitSize      = 32,
+            mode         = 'RO',
+            pollInterval = 1,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'EnableEngine',
+            offset       = 0x80,
+            bitSize      = 1,
+            mode         = 'RW',
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'CalMode',
+            offset       = 0x84,
+            bitSize      = 1,
+            mode         = 'RW',
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'awcache',
+            offset       = 0x90,
+            bitSize      = 4,
+            mode         = 'RW',
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'arcache',
+            offset       = 0x94,
+            bitSize      = 4,
+            mode         = 'RW',
+        ))
+
+        self.add(pr.RemoteCommand(
+            name         = "CountReset",
+            offset       =  0xFC,
+            bitSize      =  1,
+            function     = pr.BaseCommand.touchOne
+        ))
+
+    def countReset(self):
+        self.CountReset()
+
+class Core(pr.Device):
+    def __init__(self, numStream=15, **kwargs):
+        super().__init__(**kwargs)
+
+        for i in range(numStream):
+            self.add(StreamEngine(
+                name    = f'Stream[{i}]',
+                offset  = i*0x1000,
+            ))

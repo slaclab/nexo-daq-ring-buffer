@@ -7,4 +7,5 @@
 # copied, modified, propagated, or distributed except according to the terms
 # contained in the LICENSE.txt file.
 #-----------------------------------------------------------------------------
-from nexo_daq_ring_buffer._Core  import *
+from nexo_daq_ring_buffer._Core     import *
+from nexo_daq_ring_buffer._RateGen  import *

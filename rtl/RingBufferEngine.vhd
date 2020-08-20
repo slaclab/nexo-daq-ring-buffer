@@ -69,6 +69,7 @@ architecture rtl of RingBufferEngine is
 
    type RegType is record
       enable         : sl;
+      calMode        : sl;
       cntRst         : sl;
       awcache        : slv(3 downto 0);
       arcache        : slv(3 downto 0);
@@ -81,6 +82,7 @@ architecture rtl of RingBufferEngine is
    end record;
    constant REG_INIT_C : RegType := (
       enable         => '1',
+      calMode        => '0',
       cntRst         => '0',
       awcache        => "0010",         -- Merge-able writes
       arcache        => "1111",
@@ -94,9 +96,10 @@ architecture rtl of RingBufferEngine is
    signal r   : RegType := REG_INIT_C;
    signal rin : RegType;
 
-   signal dropFrame : sl;
-   signal dropTrig  : sl;
-   signal eofeEvent : sl;
+   signal dropFrame  : sl;
+   signal dropTrig   : sl;
+   signal eofeEvent  : sl;
+   signal calEventID : slv(31 downto 0);
 
    signal wrReq : AxiWriteDmaReqType;
    signal wrAck : AxiWriteDmaAckType;
@@ -113,10 +116,13 @@ architecture rtl of RingBufferEngine is
    signal trigHdrMaster : AxiStreamMasterType;
    signal trigHdrSlave  : AxiStreamSlaveType;
 
+   signal compMasters : AxiStreamMasterArray(1 downto 0);
+   signal compSlaves  : AxiStreamSlaveArray(1 downto 0);
+
 begin
 
-   comb : process (axilReadMaster, axilWriteMaster, dropFrame, dropTrig,
-                   eofeEvent, r, rst) is
+   comb : process (axilReadMaster, axilWriteMaster, calEventID, dropFrame,
+                   dropTrig, eofeEvent, r, rst) is
       variable v      : RegType;
       variable axilEp : AxiLiteEndPointType;
    begin
@@ -167,10 +173,13 @@ begin
       axiSlaveRegisterR(axilEp, x"10", 0, r.dropFrameCnt);
       axiSlaveRegisterR(axilEp, x"14", 0, r.dropTrigCnt);
       axiSlaveRegisterR(axilEp, x"18", 0, r.eofeEventCnt);
+      axiSlaveRegisterR(axilEp, x"1C", 0, calEventID);
 
       axiSlaveRegister (axilEp, x"80", 0, v.enable);
-      axiSlaveRegister (axilEp, x"84", 0, v.awcache);
-      axiSlaveRegister (axilEp, x"88", 0, v.arcache);
+      axiSlaveRegister (axilEp, x"84", 0, v.calMode);
+
+      axiSlaveRegister (axilEp, x"90", 0, v.awcache);
+      axiSlaveRegister (axilEp, x"94", 0, v.arcache);
 
       axiSlaveRegister (axilEp, x"FC", 0, v.cntRst);
 
@@ -206,13 +215,14 @@ begin
    U_WriteFsm : entity nexo_daq_ring_buffer.RingBufferWriteFsm
       generic map (
          TPD_G          => TPD_G,
-         SIMULATION_G   => SIMULATION_G,
          ADC_TYPE_G     => ADC_TYPE_G,
          STREAM_INDEX_G => STREAM_INDEX_G)
       port map (
          -- Control/Monitor Interface
          enable      => r.enable,
+         calMode     => r.calMode,
          dropFrame   => dropFrame,
+         calEventID  => calEventID,
          -- Clock and Reset
          clk         => clk,
          rst         => rst,
@@ -223,7 +233,10 @@ begin
          wrReq       => wrReq,
          wrAck       => wrAck,
          writeMaster => writeMaster,
-         writeSlave  => writeSlave);
+         writeSlave  => writeSlave,
+         -- Compression Inbound Interface
+         compMaster  => compMasters(1),
+         compSlave   => compSlaves(1));
 
    --------------------------------
    -- DMA Engine for the DDR Memory
@@ -260,13 +273,13 @@ begin
    U_ReadFsm : entity nexo_daq_ring_buffer.RingBufferReadFsm
       generic map (
          TPD_G            => TPD_G,
-         SIMULATION_G     => SIMULATION_G,
          ADC_TYPE_G       => ADC_TYPE_G,
          DDR_DIMM_INDEX_G => DDR_DIMM_INDEX_G,
          STREAM_INDEX_G   => STREAM_INDEX_G)
       port map (
          -- Control/Monitor Interface
          enable       => r.enable,
+         calMode      => r.calMode,
          dropTrig     => dropTrig,
          eofeEvent    => eofeEvent,
          -- Clock and Reset
@@ -281,7 +294,26 @@ begin
          readMaster   => readMaster,
          readSlave    => readSlave,
          -- Compression Inbound Interface
-         compMaster   => compMaster,
-         compSlave    => compSlave);
+         compMaster   => compMasters(0),
+         compSlave    => compSlaves(0));
+
+   -----------------------------------------------------
+   -- MUX calibration stream and readout stream together
+   -----------------------------------------------------
+   U_Mux : entity surf.AxiStreamMux
+      generic map (
+         TPD_G         => TPD_G,
+         NUM_SLAVES_G  => 2,
+         PIPE_STAGES_G => 1)
+      port map (
+         -- Clock and reset
+         axisClk      => clk,
+         axisRst      => rst,
+         -- Slaves
+         sAxisMasters => compMasters,
+         sAxisSlaves  => compSlaves,
+         -- Master
+         mAxisMaster  => compMaster,
+         mAxisSlave   => compSlave);
 
 end rtl;

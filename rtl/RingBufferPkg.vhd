@@ -50,7 +50,7 @@ package RingBufferPkg is
       TDEST_BITS_C  => 0,
       TID_BITS_C    => 0,
       TKEEP_MODE_C  => TKEEP_COMP_C,
-      TUSER_BITS_C  => 2, -- BIT0 = EOFE, BIT1 = SOF
+      TUSER_BITS_C  => 2,               -- BIT0 = EOFE, BIT1 = SOF
       TUSER_MODE_C  => TUSER_FIRST_LAST_C);
 
    -- Photon System AXI stream Configuration
@@ -66,6 +66,29 @@ package RingBufferPkg is
    function nexoAxisConfig (
       adcType : boolean)
       return AxiStreamConfigType;
+
+   constant NEXO_SOR_C : natural := 2;
+   constant NEXO_EOR_C : natural := 3;
+
+   function nexoGetUserEor (
+      axisConfig : AxiStreamConfigType;
+      axisMaster : AxiStreamMasterType)
+      return sl;
+
+   procedure nexoSetUserEor (
+      axisConfig : in    AxiStreamConfigType;
+      axisMaster : inout AxiStreamMasterType;
+      eor        : in    sl);
+
+   function nexoGetUserSor (
+      axisConfig : AxiStreamConfigType;
+      axisMaster : AxiStreamMasterType)
+      return sl;
+
+   procedure nexoSetUserSor (
+      axisConfig : in    AxiStreamConfigType;
+      axisMaster : inout AxiStreamMasterType;
+      sor        : in    sl);
 
 end package RingBufferPkg;
 
@@ -84,5 +107,41 @@ package body RingBufferPkg is
       end if;
       return ret;
    end function nexoAxisConfig;
+
+   function nexoGetUserEor (
+      axisConfig : AxiStreamConfigType;
+      axisMaster : AxiStreamMasterType)
+      return sl is
+      variable ret : sl;
+   begin
+      ret := axiStreamGetUserBit(axisConfig, axisMaster, NEXO_EOR_C);
+      return ret;
+   end function;
+
+   procedure nexoSetUserEor (
+      axisConfig : in    AxiStreamConfigType;
+      axisMaster : inout AxiStreamMasterType;
+      eor        : in    sl) is
+   begin
+      axiStreamSetUserBit(axisConfig, axisMaster, NEXO_EOR_C, eor);
+   end procedure;
+
+   function nexoGetUserSor (
+      axisConfig : AxiStreamConfigType;
+      axisMaster : AxiStreamMasterType)
+      return sl is
+      variable ret : sl;
+   begin
+      ret := axiStreamGetUserBit(axisConfig, axisMaster, NEXO_SOR_C, 0);
+      return ret;
+   end function;
+
+   procedure nexoSetUserSor (
+      axisConfig : in    AxiStreamConfigType;
+      axisMaster : inout AxiStreamMasterType;
+      sor        : in    sl) is
+   begin
+      axiStreamSetUserBit(axisConfig, axisMaster, NEXO_SOR_C, sor, 0);
+   end procedure;
 
 end package body RingBufferPkg;

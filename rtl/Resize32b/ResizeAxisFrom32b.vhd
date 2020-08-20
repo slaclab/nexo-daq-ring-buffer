@@ -98,7 +98,7 @@ begin
             -- Slave Port
             s_axis_tvalid => sAxisMaster.tvalid,
             s_axis_tready => sAxisSlave.tready,
-            s_axis_tdata  => sAxisMaster.tdata(13 downto 0),
+            s_axis_tdata  => sAxisMaster.tdata(31 downto 0),
             s_axis_tkeep  => sAxisMaster.tkeep(3 downto 0),
             s_axis_tlast  => sAxisMaster.tlast,
             s_axis_tid    => sAxisMaster.tid(7 downto 0),
