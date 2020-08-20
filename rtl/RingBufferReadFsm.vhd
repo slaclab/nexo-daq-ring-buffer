@@ -131,7 +131,7 @@ begin
       -- AXI Stream Flow Control
       v.trigRdSlave.tReady := '0';
       v.readSlave.tReady   := '0';
-      if (compSlave.tReady = '0') then
+      if (compSlave.tReady = '1') then
          v.compMaster.tValid := '0';
          v.compMaster.tLast  := '0';
          v.compMaster.tUser  := (others => '0');

@@ -60,6 +60,8 @@ architecture rtl of RingBufferWriteFsm is
 
    constant NUM_BUFFER_C : positive := 2;
 
+   constant READ_LATENCY_C : natural range 1 to 2 := 2;
+
    type WrBuffStateType is (
       WR_BUFF_IDLE_S,
       WR_BUFF_MOVE_S);
@@ -68,11 +70,13 @@ architecture rtl of RingBufferWriteFsm is
       RD_BUFF_IDLE_S,
       CAL_IDLE_S,
       RD_BUFF_HDR_S,
+      RD_BUFF_DLY_MOVE_S,
       RD_BUFF_MOVE_S,
       RD_BUFF_PADDING_S,
       RD_BUFF_WAIT_S,
       TRIG_HDR_S,
       DATA_HDR_S,
+      MOVE_DLY_S,
       MOVE_S);
 
    type RegType is record
@@ -90,15 +94,19 @@ architecture rtl of RingBufferWriteFsm is
       ramWrEn     : slv(NUM_BUFFER_C-1 downto 0);
       ramWrData   : slv(95 downto 0);
       tsWrCnt     : slv(7 downto 0);
+      tsWrCntDly  : slv(7 downto 0);
       wrChCnt     : slv(3 downto 0);
+      wrChCntDly  : slv(3 downto 0);
       wrBuffState : WrBuffStateType;
       -- Read Ping-Pong Buffer Signals
       rdSel       : natural range 0 to NUM_BUFFER_C-1;
       writeMaster : AxiStreamMasterType;
       wrReq       : AxiWriteDmaReqType;
+      wrdCnt      : slv(7 downto 0);
       tsRdCnt     : slv(7 downto 0);
       readCh      : slv(3 downto 0);
-      ramRdRdy    : sl;
+      rdEn        : slv(1 downto 0);
+      rdLat       : slv(1 downto 0);
       padCnt      : natural range 0 to 4;
       rdBuffState : RdBuffStateType;
    end record;
@@ -117,15 +125,19 @@ architecture rtl of RingBufferWriteFsm is
       ramWrEn     => (others => '0'),
       ramWrData   => (others => '0'),
       tsWrCnt     => (others => '0'),
+      tsWrCntDly  => (others => '0'),
       wrChCnt     => (others => '0'),
+      wrChCntDly  => (others => '0'),
       wrBuffState => WR_BUFF_IDLE_S,
       -- Read Ping-Pong Buffer Signals
       rdSel       => 0,
       writeMaster => AXI_STREAM_MASTER_INIT_C,
       wrReq       => AXI_WRITE_DMA_REQ_INIT_C,
+      wrdCnt      => (others => '0'),
       tsRdCnt     => (others => '0'),
       readCh      => (others => '0'),
-      ramRdRdy    => '0',
+      rdEn        => (others => '1'),
+      rdLat       => (others => '0'),
       padCnt      => 0,
       rdBuffState => RD_BUFF_IDLE_S);
 
@@ -138,6 +150,7 @@ architecture rtl of RingBufferWriteFsm is
 
    signal ramRdAddr : slv(11 downto 0);
    signal ramRdData : Slv96Array(NUM_BUFFER_C-1 downto 0);
+   signal rdEn      : slv(1 downto 0);
 
 begin
 
@@ -152,7 +165,7 @@ begin
             TPD_G          => TPD_G,
             COMMON_CLK_G   => true,
             MEMORY_TYPE_G  => "uram",
-            READ_LATENCY_G => 2,        -- Using REGB output
+            READ_LATENCY_G => READ_LATENCY_C,
             DATA_WIDTH_G   => 96,
             BYTE_WR_EN_G   => false,
             ADDR_WIDTH_G   => 12)
@@ -163,9 +176,11 @@ begin
             addra  => ramWrAddr,
             dina   => ramWrData,
             -- Port B
+            enb    => rdEn(0),
             clkb   => clk,
             addrb  => ramRdAddr,
-            doutb  => ramRdData(i));
+            doutb  => ramRdData(i),
+            regceb => rdEn(1));
 
    end generate GEN_PING_PONG;
 
@@ -186,6 +201,10 @@ begin
 
       -- AXI Stream Flow Control
       v.adcSlave.tReady := '0';
+
+      -- Keep delayed copies
+      v.wrChCntDly := r.wrChCnt;
+      v.tsWrCntDly := r.tsWrCnt;
 
       -- State machine
       case r.wrBuffState is
@@ -268,16 +287,13 @@ begin
       -- Ping-Pong Read Buffer
       --------------------------------------------------------------------------------
 
-      -- Reset the strobes
-      v.ramRdRdy := '1';
-
       -- AXI Stream Flow Control
-      if (writeSlave.tReady = '0') then
+      if (writeSlave.tReady = '1') then
          v.writeMaster.tValid := '0';
          v.writeMaster.tLast  := '0';
          v.writeMaster.tKeep  := (others => '1');
       end if;
-      if (compSlave.tReady = '0') then
+      if (compSlave.tReady = '1') then
          v.compMaster.tValid := '0';
          v.compMaster.tLast  := '0';
          v.compMaster.tUser  := (others => '0');
@@ -329,6 +345,9 @@ begin
             end if;
          ----------------------------------------------------------------------
          when RD_BUFF_HDR_S =>
+            -- Enable RAM reads
+            v.rdEn := "11";
+
             -- Check if ready to move data
             if (v.writeMaster.tValid = '0') then
 
@@ -339,26 +358,56 @@ begin
                v.writeMaster.tData(95 downto 0) := r.eventHdr(r.rdSel);
 
                -- Next state
+               v.rdBuffState := RD_BUFF_DLY_MOVE_S;
+
+            end if;
+         ----------------------------------------------------------------------
+         when RD_BUFF_DLY_MOVE_S =>
+            -- Enable RAM reads
+            v.rdEn := "11";
+
+            -- Increment the address
+            v.tsRdCnt := r.tsRdCnt + 1;
+
+            -- Check if RAM pipeline is filled
+            if (r.rdLat = READ_LATENCY_C-1) then
+
+               -- Reset the counter
+               v.rdLat := (others => '0');
+
+               -- Next State
                v.rdBuffState := RD_BUFF_MOVE_S;
+
+            else
+
+               -- Increment the counter
+               v.rdLat := r.rdLat + 1;
 
             end if;
          ----------------------------------------------------------------------
          when RD_BUFF_MOVE_S =>
+            --  Hold the pipeline
+            v.rdEn := "00";
+
             -- Check if ready to move data
-            if (v.writeMaster.tValid = '0') and (r.ramRdRdy = '1') then
+            if (v.writeMaster.tValid = '0') then
+
+               -- Advance the pipeline
+               v.rdEn := "11";
 
                -- Write the Data header
                v.writeMaster.tValid             := '1';
                v.writeMaster.tData(95 downto 0) := ramRdData(r.rdSel);
 
-               -- Reset the flag
-               v.ramRdRdy := '0';
-
-               -- Increment the counter
+               -- Increment the counters
                v.tsRdCnt := r.tsRdCnt + 1;
+               v.wrdCnt  := r.wrdCnt + 1;
 
                -- Check for last timestamp
-               if (r.tsRdCnt = 255) then
+               if (r.wrdCnt = 255) then
+
+                  -- Reset the counter
+                  v.tsRdCnt := (others => '0');
 
                   -- Increment the counter
                   v.readCh := r.readCh + 1;
@@ -466,7 +515,7 @@ begin
                v.compMaster.tData(31 downto 0) := r.calEventID;  -- Readout sequence counter
 
                -- Trigger Decision's Event Type
-               v.compMaster.tData(47 downto 32) := x"FFFF"; -- EventType[0xFFFF] = Calibration
+               v.compMaster.tData(47 downto 32) := x"FFFF";  -- EventType[0xFFFF] = Calibration
 
                -- Trigger Decision's Readout Size (zero inclusive)
                v.compMaster.tData(59 downto 48) := x"FFF";  -- 4096 time slices
@@ -496,6 +545,9 @@ begin
             end if;
          ----------------------------------------------------------------------
          when DATA_HDR_S =>
+            -- Enable RAM reads
+            v.rdEn := "11";
+
             -- Check if ready to move data
             if (v.compMaster.tValid = '0') then
 
@@ -506,26 +558,56 @@ begin
                v.compMaster.tData(95 downto 0) := r.eventHdr(r.rdSel);
 
                -- Next state
+               v.rdBuffState := MOVE_DLY_S;
+
+            end if;
+         ----------------------------------------------------------------------
+         when MOVE_DLY_S =>
+            -- Enable RAM reads
+            v.rdEn := "11";
+
+            -- Increment the address
+            v.tsRdCnt := r.tsRdCnt + 1;
+
+            -- Check if RAM pipeline is filled
+            if (r.rdLat = READ_LATENCY_C-1) then
+
+               -- Reset the counter
+               v.rdLat := (others => '0');
+
+               -- Next State
                v.rdBuffState := MOVE_S;
+
+            else
+
+               -- Increment the counter
+               v.rdLat := r.rdLat + 1;
 
             end if;
          ----------------------------------------------------------------------
          when MOVE_S =>
+            --  Hold the pipeline
+            v.rdEn := "00";
+
             -- Check if ready to move data
-            if (v.compMaster.tValid = '0') and (r.ramRdRdy = '1') then
+            if (v.compMaster.tValid = '0') then
+
+               -- Advance the pipeline
+               v.rdEn := "11";
 
                -- Move the ADC data
                v.compMaster.tValid             := '1';
                v.compMaster.tData(95 downto 0) := ramRdData(r.rdSel);
 
-               -- Reset the flag
-               v.ramRdRdy := '0';
-
-               -- Increment the counter
+               -- Increment the counters
                v.tsRdCnt := r.tsRdCnt + 1;
+               v.wrdCnt  := r.wrdCnt + 1;
 
                -- Check for last timestamp
-               if (r.tsRdCnt = 255) then
+               if (r.wrdCnt = 255) then
+
+                  -- Reset the counter
+                  v.tsRdCnt := (others => '0');
 
                   -- Increment the counter
                   v.readCh := r.readCh + 1;
@@ -583,13 +665,16 @@ begin
       -- Outputs
       --------------------------------------------------------------------------------
 
-      -- Ping-Pong Buffer Outputs
+      -- Ping-Pong Buffer Write Outputs
       ramWrEn                <= r.ramWrEn;
-      ramWrAddr(7 downto 0)  <= r.tsWrCnt(7 downto 0);
-      ramWrAddr(11 downto 8) <= r.wrChCnt;
+      ramWrAddr(7 downto 0)  <= r.tsWrCntDly;
+      ramWrAddr(11 downto 8) <= r.wrChCntDly;
       ramWrData              <= r.ramWrData;
-      ramRdAddr(7 downto 0)  <= v.tsRdCnt;  -- comb (not registered) output
-      ramRdAddr(11 downto 8) <= v.readCh;   -- comb (not registered) output
+
+      -- Ping-Pong Buffer Read Outputs
+      ramRdAddr(7 downto 0)  <= r.tsRdCnt;
+      ramRdAddr(11 downto 8) <= r.readCh;
+      rdEn                   <= v.rdEn;  -- comb (not registered) output
 
       -- Write Outputs
       adcSlave    <= v.adcSlave;        -- comb (not registered) output

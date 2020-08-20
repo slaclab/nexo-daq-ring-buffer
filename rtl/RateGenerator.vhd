@@ -37,6 +37,7 @@ entity RateGenerator is
       ADC_TYPE_G : boolean := true;  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
       CLK_FREQ_G : real    := 250.0E+6);
    port (
+      ddrRst           : in  sl;
       -- Clock and Reset
       coreClk          : in  sl;
       coreRst          : in  sl;
@@ -110,7 +111,17 @@ architecture rtl of RateGenerator is
    signal adcTxSlaves : AxiStreamSlaveArray(14 downto 0);
    signal trigTxSlave : AxiStreamSlaveType;
 
+   signal memReset : sl;
+
 begin
+
+   U_start : entity surf.Synchronizer
+      generic map (
+         TPD_G => TPD_G)
+      port map (
+         clk     => coreClk,
+         dataIn  => ddrRst,
+         dataOut => memReset);
 
    -----------------------------------------
    -- Convert AXI-Lite bus to coreClk domain
@@ -136,8 +147,8 @@ begin
          mAxiWriteMaster => axilWriteMaster,
          mAxiWriteSlave  => axilWriteSlave);
 
-   comb : process (adcTxSlaves, axilReadMaster, axilWriteMaster, coreRst, r,
-                   trigTxSlave) is
+   comb : process (adcTxSlaves, axilReadMaster, axilWriteMaster, coreRst,
+                   memReset, r, trigTxSlave) is
       variable v      : RegType;
       variable axilEp : AxiLiteEndPointType;
       variable i      : natural;
@@ -146,13 +157,17 @@ begin
       -- Latch the current value
       v := r;
 
-      -- 2 MHz timer
-      if r.timer /= 0 then
-         -- Decrement the counter
-         v.timer := r.timer - 1;
-      elsif (r.state /= IDLE_S) then
-         -- Increment the counter
-         v.dropCnt := r.dropCnt + 1;
+      if (memReset = '0') then
+
+         -- 2 MHz timer
+         if r.timer /= 0 then
+            -- Decrement the counter
+            v.timer := r.timer - 1;
+         elsif (r.state /= IDLE_S) then
+            -- Increment the counter
+            v.dropCnt := r.dropCnt + 1;
+         end if;
+
       end if;
 
       -- AXI Stream Flow Control
@@ -161,15 +176,17 @@ begin
          if (r.adcTxMasters(i).tValid = '1') then
             txRdy := '0';
          end if;
-         if (adcTxSlaves(i).tReady = '0') then
+         if (adcTxSlaves(i).tReady = '1') then
             v.adcTxMasters(i).tValid := '0';
             v.adcTxMasters(i).tLast  := '0';
+            v.adcTxMasters(i).tUser  := (others => '0');
          end if;
       end loop;
 
-      if (trigTxSlave.tReady = '0') then
+      if (trigTxSlave.tReady = '1') then
          v.trigTxMaster.tValid := '0';
          v.trigTxMaster.tLast  := '0';
+         v.trigTxMaster.tUser  := (others => '0');
       end if;
 
       -- State machine
@@ -192,10 +209,15 @@ begin
             if (txRdy = '1') then
 
                for i in 0 to 14 loop
+
                   -- Write the Data header
                   v.adcTxMasters(i).tValid                       := '1';
                   v.adcTxMasters(i).tData(TS_WIDTH_C-1 downto 0) := r.timestamp;
                   v.adcTxMasters(i).tData(95 downto TS_WIDTH_C)  := (others => '0');
+
+                  -- Insert the SOF (Start of Frame) bit
+                  ssiSetUserSof(TRIG_DECISION_AXIS_CONFIG_C, v.adcTxMasters(i), '1');
+
                end loop;
 
                -- Next state
@@ -213,11 +235,11 @@ begin
                   v.adcTxMasters(i).tValid := '1';
                   if ADC_TYPE_G then
                      for j in 0 to 7 loop
-                        v.adcTxMasters(i).tData(12*i+11 downto 12*i) := toSlv((128*i+r.adcWrd*8+j) mod 2**12, 12);
+                        v.adcTxMasters(i).tData(12*j+11 downto 12*j) := toSlv((128*i+r.adcWrd*8+j) mod 2**12, 12);
                      end loop;
                   else
                      for j in 0 to 7 loop
-                        v.adcTxMasters(i).tData(10*i+9 downto 10*i) := toSlv((128*i+r.adcWrd*8+j) mod 2**10, 10);
+                        v.adcTxMasters(i).tData(10*j+9 downto 10*j) := toSlv((128*i+r.adcWrd*8+j) mod 2**10, 10);
                      end loop;
                   end if;
 
@@ -309,6 +331,7 @@ begin
 
       -- Map the read registers
       axiSlaveRegisterR(axilEp, x"00", 0, r.dropCnt);
+      axiSlaveRegisterR(axilEp, x"04", 0, memReset);
       axiSlaveRegister (axilEp, x"80", 0, v.trigRate);
       axiSlaveRegister (axilEp, x"FC", 0, v.cntRst);
 
