@@ -40,6 +40,7 @@ entity RingBufferTop is
       SIMULATION_G           : boolean                := false;
       ADC_TYPE_G             : boolean                := true;  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
       DDR_DIMM_INDEX_G       : natural                := 0;
+      AXIS_GROUP_G           : natural  range 0 to 1  := 0;
       AXIS_SIZE_G            : positive range 1 to 15 := 15;
       ADC_CLK_IS_CORE_CLK_G  : boolean                := true;
       TRIG_CLK_IS_CORE_CLK_G : boolean                := true;
@@ -258,7 +259,7 @@ begin
             SIMULATION_G     => SIMULATION_G,
             ADC_TYPE_G       => ADC_TYPE_G,
             DDR_DIMM_INDEX_G => DDR_DIMM_INDEX_G,
-            STREAM_INDEX_G   => i)
+            STREAM_INDEX_G   => 15*AXIS_GROUP_G+i)
          port map (
             -- Clock and Reset
             clk             => coreClk,

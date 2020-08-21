@@ -33,20 +33,17 @@ use nexo_daq_ring_buffer.RingBufferPkg.all;
 
 entity RingBufferDma is
    generic (
-      TPD_G      : time    := 1 ns;
-      ADC_TYPE_G : boolean := true);  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
+      TPD_G          : time    := 1 ns;
+      ADC_TYPE_G     : boolean := true;  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
+      STREAM_INDEX_G : natural := 0);
    port (
       -- Clock and Reset
       clk            : in  sl;
       rst            : in  sl;
       -- Inbound AXI Stream Interface
-      awcache        : in slv(3 downto 0);
-      wrReq          : in  AxiWriteDmaReqType;
-      wrAck          : out AxiWriteDmaAckType;
       wrMaster       : in  AxiStreamMasterType;
       wrSlave        : out AxiStreamSlaveType;
       -- Outbound AXI Stream Interface
-      arcache        : in slv(3 downto 0);
       rdReq          : in  AxiReadDmaReqType;
       rdAck          : out AxiReadDmaAckType;
       rdMaster       : out AxiStreamMasterType;
@@ -62,7 +59,7 @@ architecture rtl of RingBufferDma is
 
    constant AXIS_CONFIG_C : AxiStreamConfigType := (
       TSTRB_EN_C    => CHARGE_AXIS_CONFIG_C.TSTRB_EN_C,
-      TDATA_BYTES_C => (128/8),         -- 128-bit data interface
+      TDATA_BYTES_C => (512/8),         -- 512-bit data interface
       TDEST_BITS_C  => CHARGE_AXIS_CONFIG_C.TDEST_BITS_C,
       TID_BITS_C    => CHARGE_AXIS_CONFIG_C.TID_BITS_C,
       TKEEP_MODE_C  => CHARGE_AXIS_CONFIG_C.TKEEP_MODE_C,
@@ -71,7 +68,7 @@ architecture rtl of RingBufferDma is
 
    constant AXI_CONFIG_C : AxiConfigType := (
       ADDR_WIDTH_C => MEM_AXI_CONFIG_C.ADDR_WIDTH_C,
-      DATA_BYTES_C => (128/8),          -- 128-bit data interface
+      DATA_BYTES_C => (512/8),          -- 512-bit data interface
       ID_BITS_C    => MEM_AXI_CONFIG_C.ID_BITS_C,
       LEN_BITS_C   => MEM_AXI_CONFIG_C.LEN_BITS_C);
 
@@ -84,9 +81,9 @@ architecture rtl of RingBufferDma is
 begin
 
    --------------------------------------------
-   -- Resize to 128b with respect to ADC_TYPE_G
+   -- Resize to 512b with respect to ADC_TYPE_G
    --------------------------------------------
-   U_WriteResize : entity nexo_daq_ring_buffer.ResizeAxisTo128b
+   U_WriteResize : entity nexo_daq_ring_buffer.ResizeAxisTo512b
       generic map (
          TPD_G      => TPD_G,
          ADC_TYPE_G => ADC_TYPE_G)
@@ -104,23 +101,17 @@ begin
    -----------------------
    -- DMA Write Controller
    -----------------------
-   U_DmaWrite : entity surf.AxiStreamDmaWrite
+   U_DmaWrite : entity nexo_daq_ring_buffer.AxiStreamDmaWrite
       generic map (
          TPD_G          => TPD_G,
-         AXI_READY_EN_G => true,
+         ADC_TYPE_G     => ADC_TYPE_G,
+         STREAM_INDEX_G => STREAM_INDEX_G,
          AXIS_CONFIG_G  => AXIS_CONFIG_C,
-         AXI_CONFIG_G   => AXI_CONFIG_C,
-         SW_CACHE_EN_G  => true,
-         BYP_CACHE_G    => true,
-         BYP_SHIFT_G    => true)   -- True = only 4kB address alignment
+         AXI_CONFIG_G   => AXI_CONFIG_C)
       port map (
          -- Clock and Reset
          axiClk         => clk,
          axiRst         => rst,
-         -- DMA Control
-         dmaReq         => wrReq,
-         dmaAck         => wrAck,
-         swCache        => awcache,
          -- AXI Stream Interface
          axisMaster     => writeMaster,
          axisSlave      => writeSlave,
@@ -137,7 +128,6 @@ begin
          AXIS_READY_EN_G => true,
          AXIS_CONFIG_G   => AXIS_CONFIG_C,
          AXI_CONFIG_G    => AXI_CONFIG_C,
-         SW_CACHE_EN_G   => true,
          BYP_SHIFT_G     => true)       -- True = only 4kB address alignment
       port map (
          -- Clock and Reset
@@ -146,7 +136,6 @@ begin
          -- DMA Control
          dmaReq        => rdReq,
          dmaAck        => rdAck,
-         swCache       => arcache,
          -- AXI Stream Interface
          axisMaster    => readMaster,
          axisSlave     => readSlave,
@@ -156,9 +145,9 @@ begin
          axiReadSlave  => axiReadSlave);
 
    ----------------------------------------------
-   -- Resize from 128b with respect to ADC_TYPE_G
+   -- Resize from 512b with respect to ADC_TYPE_G
    ----------------------------------------------
-   U_ReadResize : entity nexo_daq_ring_buffer.ResizeAxisFrom128b
+   U_ReadResize : entity nexo_daq_ring_buffer.ResizeAxisFrom512b
       generic map (
          TPD_G      => TPD_G,
          ADC_TYPE_G => ADC_TYPE_G)

@@ -23,7 +23,6 @@ library surf;
 use surf.StdRtlPkg.all;
 use surf.AxiStreamPkg.all;
 use surf.SsiPkg.all;
-use surf.AxiDmaPkg.all;
 
 library nexo_daq_ring_buffer;
 use nexo_daq_ring_buffer.RingBufferPkg.all;
@@ -47,8 +46,6 @@ entity RingBufferWriteFsm is
       adcMaster   : in  AxiStreamMasterType;
       adcSlave    : out AxiStreamSlaveType;
       -- DMA Write Interface
-      wrReq       : out AxiWriteDmaReqType;
-      wrAck       : in  AxiWriteDmaAckType;
       writeMaster : out AxiStreamMasterType;
       writeSlave  : in  AxiStreamSlaveType;
       -- Compression Inbound Interface
@@ -67,13 +64,7 @@ architecture rtl of RingBufferWriteFsm is
       WR_BUFF_MOVE_S);
 
    type RdBuffStateType is (
-      RD_BUFF_IDLE_S,
-      CAL_IDLE_S,
-      RD_BUFF_HDR_S,
-      RD_BUFF_DLY_MOVE_S,
-      RD_BUFF_MOVE_S,
-      RD_BUFF_PADDING_S,
-      RD_BUFF_WAIT_S,
+      IDLE_S,
       TRIG_HDR_S,
       DATA_HDR_S,
       MOVE_DLY_S,
@@ -83,7 +74,6 @@ architecture rtl of RingBufferWriteFsm is
       dropFrame   : sl;
       -- Calibration mode
       calMode     : sl;
-      compMaster  : AxiStreamMasterType;
       calEventID  : slv(31 downto 0);
       -- Common Ping-Pong Buffer Signals
       buffValid   : slv(NUM_BUFFER_C-1 downto 0);
@@ -100,8 +90,7 @@ architecture rtl of RingBufferWriteFsm is
       wrBuffState : WrBuffStateType;
       -- Read Ping-Pong Buffer Signals
       rdSel       : natural range 0 to NUM_BUFFER_C-1;
-      writeMaster : AxiStreamMasterType;
-      wrReq       : AxiWriteDmaReqType;
+      txMaster    : AxiStreamMasterType;
       wrdCnt      : slv(7 downto 0);
       tsRdCnt     : slv(7 downto 0);
       readCh      : slv(3 downto 0);
@@ -114,7 +103,6 @@ architecture rtl of RingBufferWriteFsm is
       dropFrame   => '0',
       -- Calibration mode
       calMode     => '0',
-      compMaster  => AXI_STREAM_MASTER_INIT_C,
       calEventID  => (others => '0'),
       -- Common Ping-Pong Buffer Signals
       buffValid   => (others => '0'),
@@ -131,15 +119,14 @@ architecture rtl of RingBufferWriteFsm is
       wrBuffState => WR_BUFF_IDLE_S,
       -- Read Ping-Pong Buffer Signals
       rdSel       => 0,
-      writeMaster => AXI_STREAM_MASTER_INIT_C,
-      wrReq       => AXI_WRITE_DMA_REQ_INIT_C,
+      txMaster    => AXI_STREAM_MASTER_INIT_C,
       wrdCnt      => (others => '0'),
       tsRdCnt     => (others => '0'),
       readCh      => (others => '0'),
       rdEn        => (others => '1'),
       rdLat       => (others => '0'),
       padCnt      => 0,
-      rdBuffState => RD_BUFF_IDLE_S);
+      rdBuffState => IDLE_S);
 
    signal r   : RegType := REG_INIT_C;
    signal rin : RegType;
@@ -151,6 +138,8 @@ architecture rtl of RingBufferWriteFsm is
    signal ramRdAddr : slv(11 downto 0);
    signal ramRdData : Slv96Array(NUM_BUFFER_C-1 downto 0);
    signal rdEn      : slv(1 downto 0);
+
+   signal txSlave : AxiStreamSlaveType;
 
 begin
 
@@ -184,8 +173,7 @@ begin
 
    end generate GEN_PING_PONG;
 
-   comb : process (adcMaster, calMode, compSlave, enable, r, ramRdData, rst,
-                   wrAck, writeSlave) is
+   comb : process (adcMaster, calMode, enable, r, ramRdData, rst, txSlave) is
       variable v : RegType;
    begin
       -- Latch the current value
@@ -288,256 +276,86 @@ begin
       --------------------------------------------------------------------------------
 
       -- AXI Stream Flow Control
-      if (writeSlave.tReady = '1') then
-         v.writeMaster.tValid := '0';
-         v.writeMaster.tLast  := '0';
-         v.writeMaster.tKeep  := (others => '1');
-      end if;
-      if (compSlave.tReady = '1') then
-         v.compMaster.tValid := '0';
-         v.compMaster.tLast  := '0';
-         v.compMaster.tUser  := (others => '0');
+      if (txSlave.tReady = '1') then
+         v.txMaster.tValid := '0';
+         v.txMaster.tLast  := '0';
+         v.txMaster.tUser  := (others => '0');
       end if;
 
       -- State machine
       case r.rdBuffState is
          ----------------------------------------------------------------------
-         when RD_BUFF_IDLE_S =>
-            -- Check for calibration mode and not in middle of transfer
-            if (r.calMode = '1') and (r.readCh = 0) then
-
-               -- Next state
-               v.rdBuffState := CAL_IDLE_S;
-
-            -- Check if ready to move data
-            elsif (r.buffValid(r.rdSel) = '1') and (wrAck.done = '0') and (wrAck.idle = '1') then
-
-               -- Send the DMA Write REQ
-               v.wrReq.request := '1';
-
-               -- Set Memory Address offset
-               v.wrReq.address(11 downto 0)  := x"000";  -- 4kB address alignment
-               v.wrReq.address(15 downto 12) := r.readCh;  -- Cache buffer index
-               v.wrReq.address(29 downto 16) := r.eventHdr(r.rdSel)(21 downto 8);  -- Address.BIT[29:16] = TimeStamp[21:8]
-               v.wrReq.address(33 downto 30) := toSlv(STREAM_INDEX_G, 4);  -- AXI Stream Index
-
-               -- Set the max buffer size
-               v.wrReq.maxSize := toSlv(4096, 32);
-
-               -- Next state
-               v.rdBuffState := RD_BUFF_HDR_S;
-
-            end if;
-         ----------------------------------------------------------------------
-         when CAL_IDLE_S =>
-            -- Check for normal mode
-            if (r.calMode = '0') then
-
-               -- Next state
-               v.rdBuffState := RD_BUFF_IDLE_S;
-
+         when IDLE_S =>
             -- Check if buffer is ready to move
-            elsif (r.buffValid(r.rdSel) = '1') then
+            if (r.buffValid(r.rdSel) = '1') then
 
                -- Next state
                v.rdBuffState := TRIG_HDR_S;
 
             end if;
          ----------------------------------------------------------------------
-         when RD_BUFF_HDR_S =>
-            -- Enable RAM reads
-            v.rdEn := "11";
-
-            -- Check if ready to move data
-            if (v.writeMaster.tValid = '0') then
-
-               -- Write the Data header
-               v.writeMaster.tValid := '1';
-
-               -- Copy the ADC header exactly
-               v.writeMaster.tData(95 downto 0) := r.eventHdr(r.rdSel);
-
-               -- Next state
-               v.rdBuffState := RD_BUFF_DLY_MOVE_S;
-
-            end if;
-         ----------------------------------------------------------------------
-         when RD_BUFF_DLY_MOVE_S =>
-            -- Enable RAM reads
-            v.rdEn := "11";
-
-            -- Increment the address
-            v.tsRdCnt := r.tsRdCnt + 1;
-
-            -- Check if RAM pipeline is filled
-            if (r.rdLat = READ_LATENCY_C-1) then
-
-               -- Reset the counter
-               v.rdLat := (others => '0');
-
-               -- Next State
-               v.rdBuffState := RD_BUFF_MOVE_S;
-
-            else
-
-               -- Increment the counter
-               v.rdLat := r.rdLat + 1;
-
-            end if;
-         ----------------------------------------------------------------------
-         when RD_BUFF_MOVE_S =>
-            --  Hold the pipeline
-            v.rdEn := "00";
-
-            -- Check if ready to move data
-            if (v.writeMaster.tValid = '0') then
-
-               -- Advance the pipeline
-               v.rdEn := "11";
-
-               -- Write the Data header
-               v.writeMaster.tValid             := '1';
-               v.writeMaster.tData(95 downto 0) := ramRdData(r.rdSel);
-
-               -- Increment the counters
-               v.tsRdCnt := r.tsRdCnt + 1;
-               v.wrdCnt  := r.wrdCnt + 1;
-
-               -- Check for last timestamp
-               if (r.wrdCnt = 255) then
-
-                  -- Reset the counter
-                  v.tsRdCnt := (others => '0');
-
-                  -- Increment the counter
-                  v.readCh := r.readCh + 1;
-
-                  -- Check for last channel
-                  if (r.readCh = 15) then
-
-                     -- Set the flag
-                     v.buffValid(r.rdSel) := '0';
-
-                     -- Increment the index
-                     if (r.rdSel = NUM_BUFFER_C-1) then
-                        v.rdSel := 0;
-                     else
-                        v.rdSel := r.rdSel + 1;
-                     end if;
-
-                  end if;
-
-                  -- Check for padding write padding for charge system
-                  if ADC_TYPE_G then
-
-                     -- Next state
-                     v.rdBuffState := RD_BUFF_PADDING_S;
-
-                  else
-
-                     -- Terminate the frame
-                     v.writeMaster.tLast := '1';
-
-                     -- Next state
-                     v.rdBuffState := RD_BUFF_WAIT_S;
-
-                  end if;
-
-               end if;
-
-            end if;
-         ----------------------------------------------------------------------
-         when RD_BUFF_PADDING_S =>
-            -- Check if ready to move data
-            if (v.writeMaster.tValid = '0') then
-
-               -- Send the padding to fix 512-bit AXI4 alignment
-               v.writeMaster.tValid := '1';
-
-               -----------------------------------------------
-               -- DDR benchmark show better memory transaction
-               -- rate when on a 64B boundary
-               -----------------------------------------------
-               -- 3136B-3084B = 52 Bytes padding
-               -- (52 Byte padding)/12 = 4.333 words
-               -- 52B = 4 x 12 words + lastWord.tKeep = 0xF
-               -----------------------------------------------
-               if r.padCnt = 4 then
-
-                  -- Reset the counter
-                  v.padCnt := 0;
-
-                  -- lastWord.tKeep = 0xF
-                  v.writeMaster.tKeep(11 downto 0) := x"00F";
-
-                  -- Terminate the frame
-                  v.writeMaster.tLast := '1';
-
-                  -- Next state
-                  v.rdBuffState := RD_BUFF_WAIT_S;
-
-               else
-                  v.padCnt := r.padCnt + 1;
-               end if;
-
-            end if;
-         ----------------------------------------------------------------------
-         when RD_BUFF_WAIT_S =>
-            -- Check if Write DMA complete
-            if (r.wrReq.request = '1') and (wrAck.done = '1') then
-
-               -- Reset the flag
-               v.wrReq.request := '0';
-
-               -- Next state
-               v.rdBuffState := RD_BUFF_IDLE_S;
-
-            end if;
-         ----------------------------------------------------------------------
-         -- Calibration Mode
-         ----------------------------------------------------------------------
          when TRIG_HDR_S =>
             -- Check if ready to move data
-            if (v.compMaster.tValid = '0') then
+            if (v.txMaster.tValid = '0') then
 
-               -- Write the Trigger header
-               v.compMaster.tValid := '1';
+               -- Check for triggered readout mode
+               if (r.calMode = '0') then
+
+                  -- Don't write Trigger header
+                  v.txMaster.tValid := '0';
+
+                  -- Set the routing path
+                  v.txMaster.tDest := x"00";
+
+               -- Else calibration mode
+               else
+
+                  -- Write the Trigger header
+                  v.txMaster.tValid := '1';
+
+                  -- Set the routing path
+                  v.txMaster.tDest := x"01";
+
+               end if;
+
+               -- Set TID = Ring Engine Stream ID
+               v.txMaster.tId(3 downto 0) := r.readCh;
 
                -- Insert the SOF (Start of Frame) bit
-               ssiSetUserSof(nexoAxisConfig(ADC_TYPE_G), v.compMaster, '1');
+               ssiSetUserSof(nexoAxisConfig(ADC_TYPE_G), v.txMaster, '1');
 
                -- Insert the SOR (Start of Readout) bit
                if (r.readCh = 0) then
-                  nexoSetUserSor(nexoAxisConfig(ADC_TYPE_G), v.compMaster, '1');
+                  nexoSetUserSor(nexoAxisConfig(ADC_TYPE_G), v.txMaster, '1');
                end if;
 
                -- Trigger Decision's Event ID
-               v.compMaster.tData(31 downto 0) := r.calEventID;  -- Readout sequence counter
+               v.txMaster.tData(31 downto 0) := r.calEventID;  -- Readout sequence counter
 
                -- Trigger Decision's Event Type
-               v.compMaster.tData(47 downto 32) := x"FFFF";  -- EventType[0xFFFF] = Calibration
+               v.txMaster.tData(47 downto 32) := x"FFFF";  -- EventType[0xFFFF] = Calibration
 
                -- Trigger Decision's Readout Size (zero inclusive)
-               v.compMaster.tData(59 downto 48) := x"FFF";  -- 4096 time slices
+               v.txMaster.tData(59 downto 48) := x"FFF";  -- 4096 time slices
 
                -- Ring Engine Stream ID
-               v.compMaster.tData(63 downto 60) := r.readCh;
+               v.txMaster.tData(63 downto 60) := r.readCh;
 
                -- Ring Engine Stream Index
-               v.compMaster.tData(67 downto 64) := toSlv(STREAM_INDEX_G, 4);
+               v.txMaster.tData(67 downto 64) := toSlv(STREAM_INDEX_G, 4);
 
                -- DDR DIMM Index
-               v.compMaster.tData(71 downto 68) := toSlv(DDR_DIMM_INDEX_G, 4);
+               v.txMaster.tData(71 downto 68) := toSlv(DDR_DIMM_INDEX_G, 4);
 
                -- ADC_TYPE_G
                if ADC_TYPE_G then
-                  v.compMaster.tData(72) := '1';
+                  v.txMaster.tData(72) := '1';
                else
-                  v.compMaster.tData(72) := '0';
+                  v.txMaster.tData(72) := '0';
                end if;
 
                -- "TBD" field zero'd out
-               v.compMaster.tData(95 downto 73) := (others => '0');
+               v.txMaster.tData(95 downto 73) := (others => '0');
 
                -- Next state
                v.rdBuffState := DATA_HDR_S;
@@ -549,13 +367,13 @@ begin
             v.rdEn := "11";
 
             -- Check if ready to move data
-            if (v.compMaster.tValid = '0') then
+            if (v.txMaster.tValid = '0') then
 
                -- Write the Data header
-               v.compMaster.tValid := '1';
+               v.txMaster.tValid := '1';
 
                -- Copy the ADC header exactly
-               v.compMaster.tData(95 downto 0) := r.eventHdr(r.rdSel);
+               v.txMaster.tData(95 downto 0) := r.eventHdr(r.rdSel);
 
                -- Next state
                v.rdBuffState := MOVE_DLY_S;
@@ -590,14 +408,14 @@ begin
             v.rdEn := "00";
 
             -- Check if ready to move data
-            if (v.compMaster.tValid = '0') then
+            if (v.txMaster.tValid = '0') then
 
                -- Advance the pipeline
                v.rdEn := "11";
 
                -- Move the ADC data
-               v.compMaster.tValid             := '1';
-               v.compMaster.tData(95 downto 0) := ramRdData(r.rdSel);
+               v.txMaster.tValid             := '1';
+               v.txMaster.tData(95 downto 0) := ramRdData(r.rdSel);
 
                -- Increment the counters
                v.tsRdCnt := r.tsRdCnt + 1;
@@ -613,13 +431,13 @@ begin
                   v.readCh := r.readCh + 1;
 
                   -- Set EOF (End of Frame)
-                  v.compMaster.tLast := '1';
+                  v.txMaster.tLast := '1';
 
                   -- Check for last channel
                   if (r.readCh = 15) then
 
                      -- Insert the EOR (End of Readout) bit
-                     nexoSetUserEor(nexoAxisConfig(ADC_TYPE_G), v.compMaster, '1');
+                     nexoSetUserEor(nexoAxisConfig(ADC_TYPE_G), v.txMaster, '1');
 
                      -- Set the flag
                      v.buffValid(r.rdSel) := '0';
@@ -631,11 +449,17 @@ begin
                         v.rdSel := r.rdSel + 1;
                      end if;
 
-                     -- Increment the counter
-                     v.calEventID := r.calEventID + 1;
+
+                     -- Check for calibration mode
+                     if (r.txMaster.tDest = x"01") then
+
+                        -- Increment the counter
+                        v.calEventID := r.calEventID + 1;
+
+                     end if;
 
                      -- Next state
-                     v.rdBuffState := RD_BUFF_IDLE_S;
+                     v.rdBuffState := IDLE_S;
 
                   else
 
@@ -677,12 +501,9 @@ begin
       rdEn                   <= v.rdEn;  -- comb (not registered) output
 
       -- Write Outputs
-      adcSlave    <= v.adcSlave;        -- comb (not registered) output
-      writeMaster <= r.writeMaster;
-      wrReq       <= r.wrReq;
-      dropFrame   <= r.dropFrame;
-      compMaster  <= r.compMaster;
-      calEventID  <= r.calEventID;
+      adcSlave   <= v.adcSlave;         -- comb (not registered) output
+      dropFrame  <= r.dropFrame;
+      calEventID <= r.calEventID;
 
       -- Reset
       if (rst = '1') then
@@ -700,5 +521,23 @@ begin
          r <= rin after TPD_G;
       end if;
    end process seq;
+
+   U_DeMux : entity surf.AxiStreamDeMux
+      generic map (
+         TPD_G         => TPD_G,
+         NUM_MASTERS_G => 2,
+         PIPE_STAGES_G => 1)
+      port map (
+         -- Clock and reset
+         axisClk         => clk,
+         axisRst         => rst,
+         -- Slave
+         sAxisMaster     => r.txMaster,
+         sAxisSlave      => txSlave,
+         -- Masters
+         mAxisMasters(0) => writeMaster,
+         mAxisMasters(1) => compMaster,
+         mAxisSlaves(0)  => writeSlave,
+         mAxisSlaves(1)  => compSlave);
 
 end rtl;

@@ -95,20 +95,6 @@ class StreamEngine(pr.Device):
             mode         = 'RW',
         ))
 
-        self.add(pr.RemoteVariable(
-            name         = 'awcache',
-            offset       = 0x90,
-            bitSize      = 4,
-            mode         = 'RW',
-        ))
-
-        self.add(pr.RemoteVariable(
-            name         = 'arcache',
-            offset       = 0x94,
-            bitSize      = 4,
-            mode         = 'RW',
-        ))
-
         self.add(pr.RemoteCommand(
             name         = "CountReset",
             offset       =  0xFC,

@@ -71,8 +71,6 @@ architecture rtl of RingBufferEngine is
       enable         : sl;
       calMode        : sl;
       cntRst         : sl;
-      awcache        : slv(3 downto 0);
-      arcache        : slv(3 downto 0);
       dropFrameCnt   : slv(31 downto 0);
       dropTrigCnt    : slv(31 downto 0);
       eofeEventCnt   : slv(31 downto 0);
@@ -84,8 +82,6 @@ architecture rtl of RingBufferEngine is
       enable         => '1',
       calMode        => '0',
       cntRst         => '0',
-      awcache        => "0010",         -- Merge-able writes
-      arcache        => "1111",
       dropFrameCnt   => (others => '0'),
       dropTrigCnt    => (others => '0'),
       eofeEventCnt   => (others => '0'),
@@ -100,9 +96,6 @@ architecture rtl of RingBufferEngine is
    signal dropTrig   : sl;
    signal eofeEvent  : sl;
    signal calEventID : slv(31 downto 0);
-
-   signal wrReq : AxiWriteDmaReqType;
-   signal wrAck : AxiWriteDmaAckType;
 
    signal rdReq : AxiReadDmaReqType;
    signal rdAck : AxiReadDmaAckType;
@@ -178,9 +171,6 @@ begin
       axiSlaveRegister (axilEp, x"80", 0, v.enable);
       axiSlaveRegister (axilEp, x"84", 0, v.calMode);
 
-      axiSlaveRegister (axilEp, x"90", 0, v.awcache);
-      axiSlaveRegister (axilEp, x"94", 0, v.arcache);
-
       axiSlaveRegister (axilEp, x"FC", 0, v.cntRst);
 
       -- Closeout the transaction
@@ -230,8 +220,6 @@ begin
          adcMaster   => adcMaster,
          adcSlave    => adcSlave,
          -- DMA Write Interface
-         wrReq       => wrReq,
-         wrAck       => wrAck,
          writeMaster => writeMaster,
          writeSlave  => writeSlave,
          -- Compression Inbound Interface
@@ -243,20 +231,17 @@ begin
    --------------------------------
    U_DMA : entity nexo_daq_ring_buffer.RingBufferDma
       generic map (
-         TPD_G      => TPD_G,
-         ADC_TYPE_G => ADC_TYPE_G)
+         TPD_G          => TPD_G,
+         ADC_TYPE_G     => ADC_TYPE_G,
+         STREAM_INDEX_G => STREAM_INDEX_G)
       port map (
          -- Clock and Reset
          clk            => clk,
          rst            => rst,
          -- Inbound AXI Stream Interface
-         awcache        => r.awcache,
-         wrReq          => wrReq,
-         wrAck          => wrAck,
          wrMaster       => writeMaster,
          wrSlave        => writeSlave,
          -- Outbound AXI Stream Interface
-         arcache        => r.arcache,
          rdReq          => rdReq,
          rdAck          => rdAck,
          rdMaster       => readMaster,

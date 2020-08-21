@@ -207,8 +207,8 @@ begin
                -- Set Memory Address offset
                v.rdReq.address(11 downto 0)  := x"000";  -- 4kB address alignment
                v.rdReq.address(15 downto 12) := r.readCh;  -- Cache buffer index
-               v.rdReq.address(29 downto 16) := r.readTime(21 downto 8);  -- Address.BIT[29:16] = TimeStamp[21:8]
-               v.rdReq.address(33 downto 30) := toSlv(STREAM_INDEX_G, 4);  -- AXI Stream Index
+               v.rdReq.address(28 downto 16) := r.readTime(20 downto 8);  -- Address.BIT[28:16] = TimeStamp[20:8]
+               v.rdReq.address(33 downto 29) := toSlv(STREAM_INDEX_G, 5);  -- AXI Stream Index
 
                -- Check for first DMA request per AXI stream output
                if (r.readTime = r.startTime) then
@@ -249,20 +249,20 @@ begin
                v.compMaster.tData(63 downto 60) := r.readCh;
 
                -- Ring Engine Stream Index
-               v.compMaster.tData(67 downto 64) := toSlv(STREAM_INDEX_G, 4);
+               v.compMaster.tData(68 downto 64) := toSlv(STREAM_INDEX_G, 5);
 
                -- DDR DIMM Index
-               v.compMaster.tData(71 downto 68) := toSlv(DDR_DIMM_INDEX_G, 4);
+               v.compMaster.tData(70 downto 69) := toSlv(DDR_DIMM_INDEX_G, 2);
 
                -- ADC_TYPE_G
                if ADC_TYPE_G then
-                  v.compMaster.tData(72) := '1';
+                  v.compMaster.tData(71) := '1';
                else
-                  v.compMaster.tData(72) := '0';
+                  v.compMaster.tData(71) := '0';
                end if;
 
                -- "TBD" field zero'd out
-               v.compMaster.tData(95 downto 73) := (others => '0');
+               v.compMaster.tData(95 downto 72) := (others => '0');
 
                -- Next state
                v.state := DATA_HDR_S;
