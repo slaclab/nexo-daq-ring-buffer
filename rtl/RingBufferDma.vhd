@@ -34,6 +34,7 @@ use nexo_daq_ring_buffer.RingBufferPkg.all;
 entity RingBufferDma is
    generic (
       TPD_G          : time    := 1 ns;
+      SIMULATION_G   : boolean := false;
       ADC_TYPE_G     : boolean := true;  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
       STREAM_INDEX_G : natural := 0);
    port (

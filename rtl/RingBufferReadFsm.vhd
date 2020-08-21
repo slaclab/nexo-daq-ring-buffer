@@ -261,8 +261,11 @@ begin
                   v.compMaster.tData(71) := '0';
                end if;
 
+               -- Normal Triggered Mode
+               v.txMaster.tData(72) := '0';
+
                -- "TBD" field zero'd out
-               v.compMaster.tData(95 downto 72) := (others => '0');
+               v.txMaster.tData(95 downto 73) := (others => '0');
 
                -- Next state
                v.state := DATA_HDR_S;

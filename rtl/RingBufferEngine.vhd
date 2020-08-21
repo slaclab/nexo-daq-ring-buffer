@@ -232,6 +232,7 @@ begin
    U_DMA : entity nexo_daq_ring_buffer.RingBufferDma
       generic map (
          TPD_G          => TPD_G,
+         SIMULATION_G   => SIMULATION_G,
          ADC_TYPE_G     => ADC_TYPE_G,
          STREAM_INDEX_G => STREAM_INDEX_G)
       port map (

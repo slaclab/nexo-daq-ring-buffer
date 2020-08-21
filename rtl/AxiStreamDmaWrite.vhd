@@ -56,12 +56,14 @@ architecture rtl of AxiStreamDmaWrite is
       WRITE_RESP_S);
 
    type RegType is record
+      awlen          : slv(7 downto 0);
       axiWriteMaster : AxiWriteMasterType;
       axisSlave      : AxiStreamSlaveType;
       state          : StateType;
    end record RegType;
 
    constant REG_INIT_C : RegType := (
+      awlen          => (others => '0'),
       axiWriteMaster => (
          awvalid     => '0',
          awaddr      => (others => '0'),
@@ -100,7 +102,10 @@ begin
 
       -- Flow Control
       v.axisSlave.tReady      := '0';
+
+      -- v.axiWriteMaster.bready := not(axiWriteSlave.bvalid);
       v.axiWriteMaster.bready := '0';
+
       if axiWriteSlave.awready = '1' then
          v.axiWriteMaster.awvalid := '0';
       end if;
@@ -113,7 +118,7 @@ begin
          ----------------------------------------------------------------------
          when WRITE_ADDR_S =>
             -- Check if enabled and timeout
-            if (axisMaster.tValid = '1') and (r.axiWriteMaster.awvalid = '0') then
+            if (axisMaster.tValid = '1') and (r.axiWriteMaster.awvalid = '0') and (r.axiWriteMaster.wvalid = '0') then
 
                -- Write Address channel
                v.axiWriteMaster.awvalid := '1';
@@ -124,6 +129,9 @@ begin
                v.axiWriteMaster.awaddr(28 downto 16) := axisMaster.tData(20 downto 8);  -- Address.BIT[28:16] = TimeStamp[20:8]
                v.axiWriteMaster.awaddr(33 downto 29) := toSlv(STREAM_INDEX_G, 5);  -- AXI Stream Index
 
+               -- Set the local burst length
+               v.awlen := getAxiLen(AXI_CONFIG_G, BURST_SIZE_C);
+
                -- Next State
                v.state := WRITE_DATA_S;
 
@@ -131,7 +139,7 @@ begin
          ----------------------------------------------------------------------
          when WRITE_DATA_S =>
             -- Check if ready to move write data
-            if (axisMaster.tValid = '1') and (v.axiWriteMaster.wvalid = '0') then
+            if (axisMaster.tValid = '1') and (r.axiWriteMaster.awvalid = '0') and (v.axiWriteMaster.wvalid = '0') then
 
                -- Accept the data
                v.axisSlave.tReady := '1';
@@ -141,11 +149,15 @@ begin
                v.axiWriteMaster.wdata(AXI_CONFIG_G.DATA_BYTES_C-1 downto 0) := axisMaster.tData(AXI_CONFIG_G.DATA_BYTES_C-1 downto 0);
                v.axiWriteMaster.wlast                                       := axisMaster.tLast;
 
+               -- Decrement the counters
+               v.awlen     := r.awlen - 1;
+
                -- Check for last transaction
                if (axisMaster.tLast = '1') then
 
                   -- Next State
                   v.state := WRITE_RESP_S;
+                  -- v.state := WRITE_ADDR_S;
 
                end if;
 
@@ -159,7 +171,7 @@ begin
                v.axiWriteMaster.bready := '1';
 
                -- Next State
-               v.wrState := WRITE_ADDR_S;
+               v.state := WRITE_ADDR_S;
 
             end if;
       ----------------------------------------------------------------------

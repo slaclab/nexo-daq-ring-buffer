@@ -33,9 +33,10 @@ use nexo_daq_trigger_decision.TriggerDecisionPkg.all;
 
 entity RateGenerator is
    generic (
-      TPD_G      : time    := 1 ns;
-      ADC_TYPE_G : boolean := true;  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
-      CLK_FREQ_G : real    := 250.0E+6);
+      TPD_G             : time     := 1 ns;
+      ADC_TYPE_G        : boolean  := true;  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
+      NUM_ADC_STREAMS_G : positive := 15;
+      CLK_FREQ_G        : real     := 250.0E+6);
    port (
       ddrRst           : in  sl;
       -- Clock and Reset
@@ -44,8 +45,8 @@ entity RateGenerator is
       -- ADC Interface
       adcClk           : in  sl;
       adcRst           : in  sl;
-      adcMasters       : out AxiStreamMasterArray(14 downto 0);
-      adcSlaves        : in  AxiStreamSlaveArray(14 downto 0);
+      adcMasters       : out AxiStreamMasterArray(NUM_ADC_STREAMS_G-1 downto 0);
+      adcSlaves        : in  AxiStreamSlaveArray(NUM_ADC_STREAMS_G-1 downto 0);
       -- Trigger Decision Interface
       trigClk          : in  sl;
       trigRst          : in  sl;
@@ -79,7 +80,7 @@ architecture rtl of RateGenerator is
       timestamp      : slv(TS_WIDTH_C-1 downto 0);
       eventCnt       : slv(47 downto 0);
       adcWrd         : natural range 0 to 15;
-      adcTxMasters   : AxiStreamMasterArray(14 downto 0);
+      adcTxMasters   : AxiStreamMasterArray(NUM_ADC_STREAMS_G-1 downto 0);
       trigTxMaster   : AxiStreamMasterType;
       state          : StateType;
       axilReadSlave  : AxiLiteReadSlaveType;
@@ -87,7 +88,8 @@ architecture rtl of RateGenerator is
    end record;
    constant REG_INIT_C : RegType := (
       trigRate       => (others => '1'),
-      trigCnt        => (others => '1'),
+      -- trigCnt        => (others => '1'),
+      trigCnt        => (others => '0'),
       timer          => TIMER_C,
       cntRst         => '0',
       dropCnt        => (others => '0'),
@@ -108,7 +110,7 @@ architecture rtl of RateGenerator is
    signal axilWriteMaster : AxiLiteWriteMasterType;
    signal axilWriteSlave  : AxiLiteWriteSlaveType;
 
-   signal adcTxSlaves : AxiStreamSlaveArray(14 downto 0);
+   signal adcTxSlaves : AxiStreamSlaveArray(NUM_ADC_STREAMS_G-1 downto 0);
    signal trigTxSlave : AxiStreamSlaveType;
 
    signal memReset : sl;
@@ -172,7 +174,7 @@ begin
 
       -- AXI Stream Flow Control
       txRdy := '1';
-      for i in 0 to 14 loop
+      for i in 0 to NUM_ADC_STREAMS_G-1 loop
          if (r.adcTxMasters(i).tValid = '1') then
             txRdy := '0';
          end if;
@@ -208,7 +210,7 @@ begin
             -- Check if ready to move data
             if (txRdy = '1') then
 
-               for i in 0 to 14 loop
+               for i in 0 to NUM_ADC_STREAMS_G-1 loop
 
                   -- Write the Data header
                   v.adcTxMasters(i).tValid                       := '1';
@@ -229,19 +231,25 @@ begin
             -- Check if ready to move data
             if (txRdy = '1') then
 
-               for i in 0 to 14 loop
+               for i in 0 to NUM_ADC_STREAMS_G-1 loop
 
                   -- Write the Data header
                   v.adcTxMasters(i).tValid := '1';
-                  if ADC_TYPE_G then
-                     for j in 0 to 7 loop
-                        v.adcTxMasters(i).tData(12*j+11 downto 12*j) := toSlv((128*i+r.adcWrd*8+j) mod 2**12, 12);
-                     end loop;
-                  else
-                     for j in 0 to 7 loop
-                        v.adcTxMasters(i).tData(10*j+9 downto 10*j) := toSlv((128*i+r.adcWrd*8+j) mod 2**10, 10);
-                     end loop;
-                  end if;
+
+                  v.adcTxMasters(i).tData := (others => '0');
+
+                  v.adcTxMasters(i).tData(7 downto 0)  := r.timestamp(7 downto 0);
+                  v.adcTxMasters(i).tData(15 downto 8) := toSlv(r.adcWrd, 8)+1;
+
+                  -- if ADC_TYPE_G then
+                  -- for j in 0 to 7 loop
+                  -- v.adcTxMasters(i).tData(12*j+11 downto 12*j) := toSlv((128*i+r.adcWrd*8+j) mod 2**12, 12);
+                  -- end loop;
+                  -- else
+                  -- for j in 0 to 7 loop
+                  -- v.adcTxMasters(i).tData(10*j+9 downto 10*j) := toSlv((128*i+r.adcWrd*8+j) mod 2**10, 10);
+                  -- end loop;
+                  -- end if;
 
                end loop;
 
@@ -252,7 +260,7 @@ begin
                   v.adcWrd := 0;
 
                   -- Terminate the frame
-                  for i in 0 to 14 loop
+                  for i in 0 to NUM_ADC_STREAMS_G-1 loop
                      v.adcTxMasters(i).tLast := '1';
                   end loop;
 
@@ -260,7 +268,7 @@ begin
                   v.timestamp := r.timestamp + 1;
 
                   -- Check trigger
-                  if r.timestamp(11 downto 0) = 4095 then
+                  if (r.timestamp(11 downto 0) = 4095) then
 
                      -- Check for trigger decision
                      if (r.trigCnt = 0) then
@@ -310,7 +318,7 @@ begin
                v.trigTxMaster.tData(31 downto 0)   := r.eventCnt(31 downto 0);  -- Event ID
                v.trigTxMaster.tData(47 downto 32)  := r.eventCnt(47 downto 32);  -- Event Type
                v.trigTxMaster.tData(59 downto 48)  := toSlv(4095, 12);  -- Readout Size = 4096 time slices
-               v.trigTxMaster.tData(107 downto 64) := r.timestamp - 4*4096;  -- Readout the data from 4*4096 time slices earlier
+               v.trigTxMaster.tData(107 downto 64) := r.timestamp - 4096;  -- Readout the data from 4096 time slices earlier
 
                -- Increment the counter
                v.eventCnt := r.eventCnt + 1;
@@ -377,7 +385,7 @@ begin
       end if;
    end process seq;
 
-   GEN_VEC : for i in 14 downto 0 generate
+   GEN_VEC : for i in NUM_ADC_STREAMS_G-1 downto 0 generate
       U_ASYNC_ADC : entity surf.AxiStreamFifoV2
          generic map (
             -- General Configurations

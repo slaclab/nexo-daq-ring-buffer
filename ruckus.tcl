@@ -31,9 +31,8 @@ loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/Resize512b"
 
 ########################################################
 
-loadIpCore -path "$::DIR_PATH/ip/RingBufferAxiXbar.xci"
-
-# loadSource -path "$::DIR_PATH/ip/RingBufferAxiXbar.dcp"
+# loadIpCore -path "$::DIR_PATH/ip/RingBufferAxiXbar.xci"
+loadSource -path "$::DIR_PATH/ip/RingBufferAxiXbar.dcp"
 
 ########################################################
 

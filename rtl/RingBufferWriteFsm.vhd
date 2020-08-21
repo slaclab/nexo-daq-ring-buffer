@@ -96,7 +96,6 @@ architecture rtl of RingBufferWriteFsm is
       readCh      : slv(3 downto 0);
       rdEn        : slv(1 downto 0);
       rdLat       : slv(1 downto 0);
-      padCnt      : natural range 0 to 4;
       rdBuffState : RdBuffStateType;
    end record;
    constant REG_INIT_C : RegType := (
@@ -125,7 +124,6 @@ architecture rtl of RingBufferWriteFsm is
       readCh      => (others => '0'),
       rdEn        => (others => '1'),
       rdLat       => (others => '0'),
-      padCnt      => 0,
       rdBuffState => IDLE_S);
 
    signal r   : RegType := REG_INIT_C;
@@ -342,17 +340,20 @@ begin
                v.txMaster.tData(63 downto 60) := r.readCh;
 
                -- Ring Engine Stream Index
-               v.txMaster.tData(67 downto 64) := toSlv(STREAM_INDEX_G, 4);
+               v.txMaster.tData(68 downto 64) := toSlv(STREAM_INDEX_G, 5);
 
                -- DDR DIMM Index
-               v.txMaster.tData(71 downto 68) := toSlv(DDR_DIMM_INDEX_G, 4);
+               v.txMaster.tData(70 downto 69) := toSlv(DDR_DIMM_INDEX_G, 2);
 
                -- ADC_TYPE_G
                if ADC_TYPE_G then
-                  v.txMaster.tData(72) := '1';
+                  v.txMaster.tData(71) := '1';
                else
-                  v.txMaster.tData(72) := '0';
+                  v.txMaster.tData(71) := '0';
                end if;
+
+               -- Calibration Mode
+               v.txMaster.tData(72) := '1';
 
                -- "TBD" field zero'd out
                v.txMaster.tData(95 downto 73) := (others => '0');
