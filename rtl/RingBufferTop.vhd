@@ -84,7 +84,7 @@ end RingBufferTop;
 
 architecture mapping of RingBufferTop is
 
-   constant AXIL_CONFIG_C : AxiLiteCrossbarMasterConfigArray(AXIS_SIZE_G-1 downto 0) := genAxiLiteConfig(AXIS_SIZE_G, AXIL_BASE_ADDR_G, 16, 12);
+   constant AXIL_CONFIG_C : AxiLiteCrossbarMasterConfigArray(AXIS_SIZE_G-1 downto 0) := genAxiLiteConfig(AXIS_SIZE_G, AXIL_BASE_ADDR_G, 12, 8);
 
    signal axilReadMaster  : AxiLiteReadMasterType;
    signal axilReadSlave   : AxiLiteReadSlaveType;

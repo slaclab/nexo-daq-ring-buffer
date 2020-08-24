@@ -112,5 +112,5 @@ class Core(pr.Device):
         for i in range(numStream):
             self.add(StreamEngine(
                 name    = f'Stream[{i}]',
-                offset  = i*0x1000,
+                offset  = i*0x100,
             ))

@@ -23,29 +23,10 @@ if { [VersionCheck 2020.1] < 0 } {exit -1}
 
 # Load RTL Source Code
 loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl"
-loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/Resize32b"
-loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/Resize64b"
-loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/Resize128b"
-loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/Resize256b"
-loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/Resize512b"
 
 ########################################################
 
-# loadIpCore -path "$::DIR_PATH/ip/RingBufferAxiXbar.xci"
-loadSource -path "$::DIR_PATH/ip/RingBufferAxiXbar.dcp"
-
-########################################################
-
-# loadIpCore -dir "$::DIR_PATH/ip/Resize32b"
-# loadIpCore -dir "$::DIR_PATH/ip/Resize64b"
-# loadIpCore -dir "$::DIR_PATH/ip/Resize128b"
-# loadIpCore -dir "$::DIR_PATH/ip/Resize256b"
-# loadIpCore -dir "$::DIR_PATH/ip/Resize512b"
-
-loadSource -dir "$::DIR_PATH/ip/Resize32b"
-loadSource -dir "$::DIR_PATH/ip/Resize64b"
-loadSource -dir "$::DIR_PATH/ip/Resize128b"
-loadSource -dir "$::DIR_PATH/ip/Resize256b"
-loadSource -dir "$::DIR_PATH/ip/Resize512b"
+loadIpCore -path "$::DIR_PATH/ip/RingBufferAxiXbar.xci"
+# loadSource -path "$::DIR_PATH/ip/RingBufferAxiXbar.dcp"
 
 ########################################################

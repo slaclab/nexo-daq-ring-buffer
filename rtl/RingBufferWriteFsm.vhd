@@ -376,6 +376,14 @@ begin
                -- Copy the ADC header exactly
                v.txMaster.tData(95 downto 0) := r.eventHdr(r.rdSel);
 
+               -- Check for triggered readout mode
+               if (r.txMaster.tDest = 0) then
+
+                  -- Encode the metadata which gets masked off RingBufferDmaWrite.WRITE_DATA_S
+                  v.txMaster.tData(3 downto 0) := r.readCh;
+
+               end if;
+
                -- Next state
                v.rdBuffState := MOVE_DLY_S;
 

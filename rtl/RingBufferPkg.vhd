@@ -47,10 +47,10 @@ package RingBufferPkg is
    constant CHARGE_AXIS_CONFIG_C : AxiStreamConfigType := (
       TSTRB_EN_C    => false,
       TDATA_BYTES_C => (96/8),  -- 96-bit data interface (8 x 12-bit ADCs)
-      TDEST_BITS_C  => 0,
-      TID_BITS_C    => 0,
+      TDEST_BITS_C  => 8,
+      TID_BITS_C    => 4,
       TKEEP_MODE_C  => TKEEP_COMP_C,
-      TUSER_BITS_C  => 2,               -- BIT0 = EOFE, BIT1 = SOF
+      TUSER_BITS_C  => 4,  -- BIT0 = EOFE, BIT1 = SOF, BIT2 = SOR, BIT3 = EOR
       TUSER_MODE_C  => TUSER_FIRST_LAST_C);
 
    -- Photon System AXI stream Configuration
