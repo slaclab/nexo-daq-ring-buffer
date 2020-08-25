@@ -137,22 +137,6 @@ begin
          v.compMaster.tUser  := (others => '0');
       end if;
 
-      ------------------------------
-      -- True: 12-bit ADC for CHARGE
-      ------------------------------
-      if ADC_TYPE_G then
-         -- 3084 Bytes = 96-bit header + 96-bit x 256 words
-         v.rdReq.size := toSlv(3084, 32);
-
-      -------------------------------
-      -- False: 10-bit ADC for PHOTON
-      -------------------------------
-      else
-         -- 2570 Bytes = 80-bit header + 80-bit x 256 words
-         v.rdReq.size := toSlv(2570, 32);
-
-      end if;
-
       -- State machine
       case r.state is
          ----------------------------------------------------------------------

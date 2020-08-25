@@ -223,35 +223,48 @@ begin
          writeMaster => writeMaster,
          writeSlave  => writeSlave,
          -- Compression Inbound Interface
-         compMaster  => compMasters(1),
+         compMaster  => compMasters(1),  -- Calibration stream
          compSlave   => compSlaves(1));
 
-   --------------------------------
-   -- DMA Engine for the DDR Memory
-   --------------------------------
-   U_DMA : entity nexo_daq_ring_buffer.RingBufferDma
+   -----------------------
+   -- DMA Write Controller
+   -----------------------
+   U_DmaWrite : entity nexo_daq_ring_buffer.RingBufferDmaWrite
       generic map (
          TPD_G          => TPD_G,
-         SIMULATION_G   => SIMULATION_G,
          ADC_TYPE_G     => ADC_TYPE_G,
          STREAM_INDEX_G => STREAM_INDEX_G)
       port map (
          -- Clock and Reset
-         clk            => clk,
-         rst            => rst,
-         -- Inbound AXI Stream Interface
-         wrMaster       => writeMaster,
-         wrSlave        => writeSlave,
-         -- Outbound AXI Stream Interface
-         rdReq          => rdReq,
-         rdAck          => rdAck,
-         rdMaster       => readMaster,
-         rdSlave        => readSlave,
+         axiClk         => clk,
+         axiRst         => rst,
+         -- AXI Stream Interface
+         axisMaster     => writeMaster,
+         axisSlave      => writeSlave,
          -- AXI4 Interface
          axiWriteMaster => axiWriteMaster,
-         axiWriteSlave  => axiWriteSlave,
-         axiReadMaster  => axiReadMaster,
-         axiReadSlave   => axiReadSlave);
+         axiWriteSlave  => axiWriteSlave);
+
+   ----------------------
+   -- DMA Read Controller
+   ----------------------
+   U_DmaRead : entity nexo_daq_ring_buffer.RingBufferDmaRead
+      generic map (
+         TPD_G         => TPD_G,
+         ADC_TYPE_G    => ADC_TYPE_G)
+      port map (
+         -- Clock and Reset
+         axiClk        => clk,
+         axiRst        => rst,
+         -- DMA Control
+         dmaReq        => rdReq,
+         dmaAck        => rdAck,
+         -- AXI Stream Interface
+         axisMaster    => readMaster,
+         axisSlave     => readSlave,
+         -- AXI4 Interface
+         axiReadMaster => axiReadMaster,
+         axiReadSlave  => axiReadSlave);
 
    ------------
    -- Read FSM
@@ -280,26 +293,24 @@ begin
          readMaster   => readMaster,
          readSlave    => readSlave,
          -- Compression Inbound Interface
-         compMaster   => compMasters(0),
+         compMaster   => compMasters(0),  -- Trigger data read stream
          compSlave    => compSlaves(0));
 
    -----------------------------------------------------
    -- MUX calibration stream and readout stream together
    -----------------------------------------------------
-   U_Mux : entity surf.AxiStreamMux
+   U_Mux : entity nexo_daq_ring_buffer.RingBufferReadMux
       generic map (
-         TPD_G         => TPD_G,
-         NUM_SLAVES_G  => 2,
-         PIPE_STAGES_G => 1)
+         TPD_G => TPD_G)
       port map (
          -- Clock and reset
-         axisClk      => clk,
-         axisRst      => rst,
+         clk         => clk,
+         rst         => rst,
          -- Slaves
-         sAxisMasters => compMasters,
-         sAxisSlaves  => compSlaves,
+         compMasters => compMasters,
+         compSlaves  => compSlaves,
          -- Master
-         mAxisMaster  => compMaster,
-         mAxisSlave   => compSlave);
+         compMaster  => compMaster,
+         compSlave   => compSlave);
 
 end rtl;

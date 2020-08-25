@@ -334,7 +334,7 @@ begin
                v.txMaster.tData(47 downto 32) := x"FFFF";  -- EventType[0xFFFF] = Calibration
 
                -- Trigger Decision's Readout Size (zero inclusive)
-               v.txMaster.tData(59 downto 48) := x"FFF";  -- 4096 time slices
+               v.txMaster.tData(59 downto 48) := x"0FF";  -- 256 time slices
 
                -- Ring Engine Stream ID
                v.txMaster.tData(63 downto 60) := r.readCh;
