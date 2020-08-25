@@ -164,9 +164,6 @@ begin
 
                end if;
 
-               -- Decrement the counters
-               v.awlen := r.awlen - 1;  -- used for simulation debugging
-
                -- Check for max count
                if (r.wrdCnt = MAX_CNT_C-1) then
 
@@ -175,6 +172,9 @@ begin
 
                   -- Write the AXI4 word
                   v.axiWriteMaster.wvalid := '1';
+
+                  -- Decrement the counters
+                  v.awlen := r.awlen - 1;  -- used for simulation debugging
 
                else
 
