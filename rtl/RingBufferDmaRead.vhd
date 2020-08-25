@@ -150,6 +150,14 @@ begin
                   -- Accept the data
                   v.axiReadMaster.rready := '1';
 
+                  -- Check for last transfer
+                  if axiReadSlave.rlast = '1' then
+
+                     -- Next State
+                     v.state := READ_ADDR_S;
+
+                  end if;
+
                else
 
                   -- Increment the counter
@@ -167,14 +175,6 @@ begin
 
                   -- Increment the counters
                   v.cnt := r.cnt + 1;
-
-               end if;
-
-               -- Check for last transfer
-               if axiReadSlave.rlast = '1' then
-
-                  -- Next State
-                  v.state := READ_ADDR_S;
 
                end if;
 
