@@ -17,7 +17,7 @@ class StreamEngine(pr.Device):
         self.add(pr.RemoteVariable(
             name         = 'STREAM_INDEX_G',
             offset       = 0x00,
-            bitSize      = 4,
+            bitSize      = 8,
             bitOffset    = 0,
             mode         = 'RO',
         ))
@@ -25,8 +25,8 @@ class StreamEngine(pr.Device):
         self.add(pr.RemoteVariable(
             name         = 'DDR_DIMM_INDEX_G',
             offset       = 0x00,
-            bitSize      = 4,
-            bitOffset    = 4,
+            bitSize      = 8,
+            bitOffset    = 8,
             mode         = 'RO',
         ))
 
@@ -34,7 +34,7 @@ class StreamEngine(pr.Device):
             name         = 'ADC_TYPE_G',
             offset       = 0x00,
             bitSize      = 1,
-            bitOffset    = 8,
+            bitOffset    = 16,
             mode         = 'RO',
         ))
 
@@ -42,7 +42,7 @@ class StreamEngine(pr.Device):
             name         = 'SIMULATION_G',
             offset       = 0x00,
             bitSize      = 1,
-            bitOffset    = 12,
+            bitOffset    = 24,
             mode         = 'RO',
         ))
 

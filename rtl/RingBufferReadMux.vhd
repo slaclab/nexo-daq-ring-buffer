@@ -97,7 +97,7 @@ begin
          ----------------------------------------------------------------------
          when MOVE_S =>
             -- Check if ready to move data
-            if (compMasters(i).tValid = '1') and (r.compMaster.tValid = '0') then
+            if (compMasters(r.idx).tValid = '1') and (r.compMaster.tValid = '0') then
 
                -- Accept the data
                v.compSlaves(r.idx).tReady := '1';

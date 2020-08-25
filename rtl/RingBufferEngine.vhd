@@ -158,10 +158,10 @@ begin
       axiSlaveWaitTxn(axilEp, axilWriteMaster, axilReadMaster, v.axilWriteSlave, v.axilReadSlave);
 
       -- Map the read registers
-      axiSlaveRegisterR(axilEp, x"00", 0, toSlv(STREAM_INDEX_G, 4));
-      axiSlaveRegisterR(axilEp, x"00", 4, toSlv(DDR_DIMM_INDEX_G, 4));
-      axiSlaveRegisterR(axilEp, x"00", 8, ite(ADC_TYPE_G, '1', '0'));
-      axiSlaveRegisterR(axilEp, x"00", 12, ite(SIMULATION_G, '1', '0'));
+      axiSlaveRegisterR(axilEp, x"00", 0, toSlv(STREAM_INDEX_G, 8));
+      axiSlaveRegisterR(axilEp, x"00", 8, toSlv(DDR_DIMM_INDEX_G, 8));
+      axiSlaveRegisterR(axilEp, x"00", 16, ite(ADC_TYPE_G, '1', '0'));
+      axiSlaveRegisterR(axilEp, x"00", 24, ite(SIMULATION_G, '1', '0'));
 
       axiSlaveRegisterR(axilEp, x"10", 0, r.dropFrameCnt);
       axiSlaveRegisterR(axilEp, x"14", 0, r.dropTrigCnt);
@@ -250,8 +250,8 @@ begin
    ----------------------
    U_DmaRead : entity nexo_daq_ring_buffer.RingBufferDmaRead
       generic map (
-         TPD_G         => TPD_G,
-         ADC_TYPE_G    => ADC_TYPE_G)
+         TPD_G      => TPD_G,
+         ADC_TYPE_G => ADC_TYPE_G)
       port map (
          -- Clock and Reset
          axiClk        => clk,
