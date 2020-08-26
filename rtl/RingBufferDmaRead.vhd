@@ -26,12 +26,13 @@ use surf.AxiPkg.all;
 use surf.AxiDmaPkg.all;
 
 library nexo_daq_ring_buffer;
+use nexo_daq_ring_buffer.RingBufferPkg.all;
 use nexo_daq_ring_buffer.RingBufferDmaPkg.all;
 
 entity RingBufferDmaRead is
    generic (
       TPD_G      : time    := 1 ns;
-      ADC_TYPE_G : boolean := true);  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
+      ADC_TYPE_G : AdcType := ADC_TYPE_CHARGE_C);
    port (
       -- Clock/Reset
       axiClk        : in  sl;

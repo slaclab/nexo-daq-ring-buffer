@@ -22,8 +22,13 @@ use surf.StdRtlPkg.all;
 use surf.AxiLitePkg.all;
 use surf.AxiStreamPkg.all;
 use surf.AxiPkg.all;
+use surf.SsiPkg.all;
 
 package RingBufferPkg is
+
+   -- ADC configuration Types
+   type AdcType is (ADC_TYPE_CHARGE_C, ADC_TYPE_PHOTON_C);
+   type AdcTypeArray is array (natural range<>) of AdcType;
 
    -- Timestamp Width
    constant TS_WIDTH_C : positive := 44;
@@ -63,12 +68,32 @@ package RingBufferPkg is
       TUSER_BITS_C  => CHARGE_AXIS_CONFIG_C.TUSER_BITS_C,
       TUSER_MODE_C  => CHARGE_AXIS_CONFIG_C.TUSER_MODE_C);
 
-   function nexoAxisConfig (
-      adcType : boolean)
-      return AxiStreamConfigType;
+   ------------------------------------------------------------------------
+   -- EOFE (End of Frame with Error): TUSER.BIT[0] (last byte in the frame)
+   --
+   -- Note: EOF (End of Frame) = AXI stream TLAST
+   --
+   ------------------------------------------------------------------------
+   constant NEXO_EOFE_C : natural := SSI_EOFE_C; -- 0
 
+   ---------------------------------------------------------------
+   -- SOF (Start of Frame): TUSER.BIT[1] (first byte in the frame)
+   ---------------------------------------------------------------
+   constant NEXO_SOF_C : natural := SSI_SOF_C; -- 1
+
+   -----------------------------------------------------------------
+   -- SOR (Start of Readout): TUSER.BIT[2] (first byte in the frame)
+   -----------------------------------------------------------------
    constant NEXO_SOR_C : natural := 2;
+
+   -----------------------------------------------------------------
+   -- EOR (End of Readout): TUSER.BIT[3] (last byte in the frame)
+   -----------------------------------------------------------------
    constant NEXO_EOR_C : natural := 3;
+
+   function nexoAxisConfig (
+      adcConfig : AdcType)
+      return AxiStreamConfigType;
 
    function nexoGetUserEor (
       axisConfig : AxiStreamConfigType;
@@ -95,12 +120,12 @@ end package RingBufferPkg;
 package body RingBufferPkg is
 
    function nexoAxisConfig (
-      adcType : boolean)
+      adcConfig : AdcType)
       return AxiStreamConfigType
    is
       variable ret : AxiStreamConfigType;
    begin
-      if (adcType = true) then
+      if (adcConfig = ADC_TYPE_CHARGE_C) then
          ret := CHARGE_AXIS_CONFIG_C;
       else
          ret := PHOTON_AXIS_CONFIG_C;

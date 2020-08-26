@@ -30,7 +30,7 @@ use nexo_daq_ring_buffer.RingBufferPkg.all;
 entity RingBufferWriteFsm is
    generic (
       TPD_G            : time    := 1 ns;
-      ADC_TYPE_G       : boolean := true;  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
+      ADC_TYPE_G       : AdcType := ADC_TYPE_CHARGE_C;
       DDR_DIMM_INDEX_G : natural := 0;
       STREAM_INDEX_G   : natural := 0);
    port (
@@ -346,10 +346,10 @@ begin
                v.txMaster.tData(70 downto 69) := toSlv(DDR_DIMM_INDEX_G, 2);
 
                -- ADC_TYPE_G
-               if ADC_TYPE_G then
-                  v.txMaster.tData(71) := '1';
+               if (ADC_TYPE_G = ADC_TYPE_CHARGE_C) then
+                  v.txMaster.tData(71) := '1';  -- ADC_TYPE_CHARGE_C
                else
-                  v.txMaster.tData(71) := '0';
+                  v.txMaster.tData(71) := '0';  -- PHOTON_AXIS_CONFIG_C
                end if;
 
                -- Calibration Mode

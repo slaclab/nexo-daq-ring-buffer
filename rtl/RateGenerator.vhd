@@ -34,7 +34,7 @@ use nexo_daq_trigger_decision.TriggerDecisionPkg.all;
 entity RateGenerator is
    generic (
       TPD_G             : time     := 1 ns;
-      ADC_TYPE_G        : boolean  := true;  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
+      ADC_TYPE_G        : AdcType  := ADC_TYPE_CHARGE_C;
       NUM_ADC_STREAMS_G : positive := 15;
       CLK_FREQ_G        : real     := 250.0E+6);
    port (
@@ -241,7 +241,7 @@ begin
                   v.adcTxMasters(i).tData(7 downto 0)  := r.timestamp(7 downto 0);
                   v.adcTxMasters(i).tData(15 downto 8) := toSlv(r.adcWrd, 8)+1;
 
-                  -- if ADC_TYPE_G then
+                  -- if (ADC_TYPE_G = ADC_TYPE_CHARGE_C) then
                   -- for j in 0 to 7 loop
                   -- v.adcTxMasters(i).tData(12*j+11 downto 12*j) := toSlv((128*i+r.adcWrd*8+j) mod 2**12, 12);
                   -- end loop;

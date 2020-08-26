@@ -22,6 +22,9 @@ use surf.StdRtlPkg.all;
 use surf.AxiStreamPkg.all;
 use surf.AxiPkg.all;
 
+library nexo_daq_ring_buffer;
+use nexo_daq_ring_buffer.RingBufferPkg.all;
+
 package RingBufferDmaPkg is
 
    constant AXI_CONFIG_C : AxiConfigType := (
@@ -31,15 +34,15 @@ package RingBufferDmaPkg is
       LEN_BITS_C   => 8);               -- 8-bit awlen/arlen interface
 
    function nexoGetWordSize (
-      adcType : boolean)
+      adcConfig : AdcType)
       return positive;
 
    function nexoGetMaxWordCnt (
-      adcType : boolean)
+      adcConfig : AdcType)
       return positive;
 
    function nexoGetBurstSize (
-      adcType : boolean)
+      adcConfig : AdcType)
       return positive;
 
 end package RingBufferDmaPkg;
@@ -47,12 +50,12 @@ end package RingBufferDmaPkg;
 package body RingBufferDmaPkg is
 
    function nexoGetWordSize (
-      adcType : boolean)
+      adcConfig : AdcType)
       return positive
    is
       variable ret : positive;
    begin
-      if (adcType = true) then
+      if (adcConfig = ADC_TYPE_CHARGE_C) then
          -- Charge
          ret := 96;                     -- 96-bits (12-bytes) per AXIS word
       else
@@ -63,12 +66,12 @@ package body RingBufferDmaPkg is
    end function nexoGetWordSize;
 
    function nexoGetMaxWordCnt (
-      adcType : boolean)
+      adcConfig : AdcType)
       return positive
    is
       variable ret : positive;
    begin
-      if (adcType = true) then
+      if (adcConfig = ADC_TYPE_CHARGE_C) then
          -- Charge
          ret := 5;  -- 5 x 12-byte AXIS words per 64B AXI4 word
       else
@@ -79,12 +82,12 @@ package body RingBufferDmaPkg is
    end function nexoGetMaxWordCnt;
 
    function nexoGetBurstSize (
-      adcType : boolean)
+      adcConfig : AdcType)
       return positive
    is
       variable ret : positive;
    begin
-      if (adcType = true) then
+      if (adcConfig = ADC_TYPE_CHARGE_C) then
          -- Charge: 257/5 = 51.400
          ret := 52*64;                  -- 52 AXI4 words x 64B = 3328B
       else

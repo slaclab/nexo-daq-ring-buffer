@@ -36,17 +36,16 @@ use nexo_daq_trigger_decision.TriggerDecisionPkg.all;
 
 entity RingBufferTop is
    generic (
-      TPD_G                  : time                   := 1 ns;
-      SIMULATION_G           : boolean                := false;
-      ADC_TYPE_G             : boolean                := true;  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
-      DDR_DIMM_INDEX_G       : natural                := 0;
-      AXIS_GROUP_G           : natural  range 0 to 1  := 0;
-      AXIS_SIZE_G            : positive range 1 to 15 := 15;
-      ADC_CLK_IS_CORE_CLK_G  : boolean                := true;
-      TRIG_CLK_IS_CORE_CLK_G : boolean                := true;
-      COMP_CLK_IS_CORE_CLK_G : boolean                := true;
-      AXIL_CLK_IS_CORE_CLK_G : boolean                := true;
-      AXIL_BASE_ADDR_G       : slv(31 downto 0)       := (others => '0'));
+      TPD_G                  : time                      := 1 ns;
+      SIMULATION_G           : boolean                   := false;
+      ADC_TYPE_G             : AdcTypeArray(29 downto 0) := (others => ADC_TYPE_CHARGE_C);
+      DDR_DIMM_INDEX_G       : natural                   := 0;
+      AXIS_SIZE_G            : positive range 1 to 30    := 15;
+      ADC_CLK_IS_CORE_CLK_G  : boolean                   := true;
+      TRIG_CLK_IS_CORE_CLK_G : boolean                   := true;
+      COMP_CLK_IS_CORE_CLK_G : boolean                   := true;
+      AXIL_CLK_IS_CORE_CLK_G : boolean                   := true;
+      AXIL_BASE_ADDR_G       : slv(31 downto 0)          := (others => '0'));
    port (
       -- Core Clock/Reset
       coreClk          : in  sl;
@@ -84,7 +83,7 @@ end RingBufferTop;
 
 architecture mapping of RingBufferTop is
 
-   constant AXIL_CONFIG_C : AxiLiteCrossbarMasterConfigArray(AXIS_SIZE_G-1 downto 0) := genAxiLiteConfig(AXIS_SIZE_G, AXIL_BASE_ADDR_G, 12, 8);
+   constant AXIL_CONFIG_C : AxiLiteCrossbarMasterConfigArray(AXIS_SIZE_G-1 downto 0) := genAxiLiteConfig(AXIS_SIZE_G, AXIL_BASE_ADDR_G, 13, 8);
 
    signal axilReadMaster  : AxiLiteReadMasterType;
    signal axilReadSlave   : AxiLiteReadSlaveType;
@@ -108,10 +107,10 @@ architecture mapping of RingBufferTop is
    signal cpMasters : AxiStreamMasterArray(AXIS_SIZE_G-1 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);
    signal cpSlaves  : AxiStreamSlaveArray(AXIS_SIZE_G-1 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C);
 
-   signal axiWriteMasters : AxiWriteMasterArray(14 downto 0) := (others => AXI_WRITE_MASTER_INIT_C);
-   signal axiWriteSlaves  : AxiWriteSlaveArray(14 downto 0)  := (others => AXI_WRITE_SLAVE_INIT_C);
-   signal axiReadMasters  : AxiReadMasterArray(14 downto 0)  := (others => AXI_READ_MASTER_INIT_C);
-   signal axiReadSlaves   : AxiReadSlaveArray(14 downto 0)   := (others => AXI_READ_SLAVE_INIT_C);
+   signal axiWriteMasters : AxiWriteMasterArray(29 downto 0) := (others => AXI_WRITE_MASTER_INIT_C);
+   signal axiWriteSlaves  : AxiWriteSlaveArray(29 downto 0)  := (others => AXI_WRITE_SLAVE_INIT_C);
+   signal axiReadMasters  : AxiReadMasterArray(29 downto 0)  := (others => AXI_READ_MASTER_INIT_C);
+   signal axiReadSlaves   : AxiReadSlaveArray(29 downto 0)   := (others => AXI_READ_SLAVE_INIT_C);
 
 begin
 
@@ -230,8 +229,8 @@ begin
                GEN_SYNC_FIFO_G     => false,
                FIFO_ADDR_WIDTH_G   => 5,
                -- AXI Stream Port Configurations
-               SLAVE_AXI_CONFIG_G  => nexoAxisConfig(ADC_TYPE_G),
-               MASTER_AXI_CONFIG_G => nexoAxisConfig(ADC_TYPE_G))
+               SLAVE_AXI_CONFIG_G  => nexoAxisConfig(ADC_TYPE_G(i)),
+               MASTER_AXI_CONFIG_G => nexoAxisConfig(ADC_TYPE_G(i)))
             port map (
                -- Slave Port
                sAxisClk    => trigClk,
@@ -257,9 +256,9 @@ begin
          generic map (
             TPD_G            => TPD_G,
             SIMULATION_G     => SIMULATION_G,
-            ADC_TYPE_G       => ADC_TYPE_G,
+            ADC_TYPE_G       => ADC_TYPE_G(i),
             DDR_DIMM_INDEX_G => DDR_DIMM_INDEX_G,
-            STREAM_INDEX_G   => 15*AXIS_GROUP_G+i)
+            STREAM_INDEX_G   => i)
          port map (
             -- Clock and Reset
             clk             => coreClk,
@@ -296,8 +295,8 @@ begin
                GEN_SYNC_FIFO_G     => false,
                FIFO_ADDR_WIDTH_G   => 5,
                -- AXI Stream Port Configurations
-               SLAVE_AXI_CONFIG_G  => nexoAxisConfig(ADC_TYPE_G),
-               MASTER_AXI_CONFIG_G => nexoAxisConfig(ADC_TYPE_G))
+               SLAVE_AXI_CONFIG_G  => nexoAxisConfig(ADC_TYPE_G(i)),
+               MASTER_AXI_CONFIG_G => nexoAxisConfig(ADC_TYPE_G(i)))
             port map (
                -- Slave Port
                sAxisClk    => coreClk,
@@ -321,23 +320,24 @@ begin
    -----------------------
    -- AXI4 Memory Crossbar
    -----------------------
-   U_AxiXbar : entity nexo_daq_ring_buffer.RingBufferAxiXbarWrapper
+   U_AxiXbar : entity nexo_daq_ring_buffer.RingBufferAxiXbar
       generic map (
-         TPD_G => TPD_G)
+         TPD_G => TPD_G,
+         AXIS_SIZE_G => AXIS_SIZE_G)
       port map (
-         -- Slaves
-         sAxiClk          => coreClk,
-         sAxiRst          => coreRst,
+         -- Application AXI4 Interface (coreClk domain)
+         coreClk          => coreClk,
+         coreRst          => coreRst,
          sAxiWriteMasters => axiWriteMasters,
          sAxiWriteSlaves  => axiWriteSlaves,
          sAxiReadMasters  => axiReadMasters,
          sAxiReadSlaves   => axiReadSlaves,
-         -- Master
-         mAxiClk          => ddrClk,
-         mAxiRst          => ddrRst,
-         mAxiWriteMaster  => ddrWriteMaster,
-         mAxiWriteSlave   => ddrWriteSlave,
-         mAxiReadMaster   => ddrReadMaster,
-         mAxiReadSlave    => ddrReadSlave);
+         -- DDR Memory Interface (ddrClk domain)
+         ddrClk           => ddrRst,
+         ddrRst           => ddrRst,
+         ddrWriteMaster   => ddrWriteMaster,
+         ddrWriteSlave    => ddrWriteSlave,
+         ddrReadMaster    => ddrReadMaster,
+         ddrReadSlave     => ddrReadSlave);
 
 end mapping;

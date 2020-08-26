@@ -37,7 +37,7 @@ entity RingBufferEngine is
    generic (
       TPD_G            : time    := 1 ns;
       SIMULATION_G     : boolean := false;
-      ADC_TYPE_G       : boolean := true;  -- True: 12-bit ADC for CHARGE, False: 10-bit ADC for PHOTON
+      ADC_TYPE_G       : AdcType := ADC_TYPE_CHARGE_C;
       DDR_DIMM_INDEX_G : natural := 0;
       STREAM_INDEX_G   : natural := 0);
    port (
@@ -160,7 +160,7 @@ begin
       -- Map the read registers
       axiSlaveRegisterR(axilEp, x"00", 0, toSlv(STREAM_INDEX_G, 8));
       axiSlaveRegisterR(axilEp, x"00", 8, toSlv(DDR_DIMM_INDEX_G, 8));
-      axiSlaveRegisterR(axilEp, x"00", 16, ite(ADC_TYPE_G, '1', '0'));
+      axiSlaveRegisterR(axilEp, x"00", 16, ite((ADC_TYPE_G = ADC_TYPE_CHARGE_C), '1', '0'));
       axiSlaveRegisterR(axilEp, x"00", 24, ite(SIMULATION_G, '1', '0'));
 
       axiSlaveRegisterR(axilEp, x"10", 0, r.dropFrameCnt);

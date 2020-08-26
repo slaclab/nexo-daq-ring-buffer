@@ -23,10 +23,11 @@ if { [VersionCheck 2020.1] < 0 } {exit -1}
 
 # Load RTL Source Code
 loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl"
+loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/RingBufferAxiXbar"
 
 ########################################################
 
-loadIpCore -path "$::DIR_PATH/ip/RingBufferAxiXbar.xci"
-# loadSource -path "$::DIR_PATH/ip/RingBufferAxiXbar.dcp"
+loadIpCore -dir "$::DIR_PATH/ip/RingBufferAxiXbar"
+# loadSource -dir "$::DIR_PATH/ip/RingBufferAxiXbar"
 
 ########################################################
