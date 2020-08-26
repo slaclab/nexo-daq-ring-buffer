@@ -333,7 +333,7 @@ begin
          sAxiReadMasters  => axiReadMasters,
          sAxiReadSlaves   => axiReadSlaves,
          -- DDR Memory Interface (ddrClk domain)
-         ddrClk           => ddrRst,
+         ddrClk           => ddrClk,
          ddrRst           => ddrRst,
          ddrWriteMaster   => ddrWriteMaster,
          ddrWriteSlave    => ddrWriteSlave,

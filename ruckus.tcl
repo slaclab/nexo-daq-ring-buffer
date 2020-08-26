@@ -23,6 +23,7 @@ if { [VersionCheck 2020.1] < 0 } {exit -1}
 
 # Load RTL Source Code
 loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl"
+loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/RingBufferDma"
 loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/RingBufferAxiXbar"
 
 ########################################################
