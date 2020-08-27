@@ -7,5 +7,16 @@
 # copied, modified, propagated, or distributed except according to the terms
 # contained in the LICENSE.txt file.
 #-----------------------------------------------------------------------------
-from nexo_daq_ring_buffer._Top           import *
-from nexo_daq_ring_buffer._StreamEngine  import *
+
+import pyrogue              as pr
+import nexo_daq_ring_buffer as ringBuff
+
+class Top(pr.Device):
+    def __init__(self, numStream=23, **kwargs):
+        super().__init__(**kwargs)
+
+        for i in range(numStream):
+            self.add(ringBuff.StreamEngine(
+                name    = f'Stream[{i}]',
+                offset  = i*0x100,
+            ))

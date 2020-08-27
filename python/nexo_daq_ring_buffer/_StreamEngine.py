@@ -104,13 +104,3 @@ class StreamEngine(pr.Device):
 
     def countReset(self):
         self.CountReset()
-
-class Core(pr.Device):
-    def __init__(self, numStream=15, **kwargs):
-        super().__init__(**kwargs)
-
-        for i in range(numStream):
-            self.add(StreamEngine(
-                name    = f'Stream[{i}]',
-                offset  = i*0x100,
-            ))
