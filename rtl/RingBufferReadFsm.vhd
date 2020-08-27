@@ -264,8 +264,8 @@ begin
                v.readSlave.tReady := '1';
 
                -- Check for timestamp misalignment
-               if (readMaster.tData(TS_WIDTH_C-1 downto 8) /= r.readTime(TS_WIDTH_C-1 downto 8)) then
-                  -- Reset the flag
+               if (readMaster.tData(TS_WIDTH_C-1 downto 8) /= r.readTime(TS_WIDTH_C-1 downto 8)) or (readMaster.tData(7 downto 0) /= 0) then
+                  -- Set the ERROR flag
                   v.eofe := '1';
                end if;
 
