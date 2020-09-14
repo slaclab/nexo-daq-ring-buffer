@@ -31,8 +31,9 @@ use nexo_daq_ring_buffer.RingBufferDmaPkg.all;
 
 entity RingBufferDmaRead is
    generic (
-      TPD_G      : time    := 1 ns;
-      ADC_TYPE_G : AdcType := ADC_TYPE_CHARGE_C);
+      TPD_G         : time    := 1 ns;
+      PIPE_STAGES_G : natural := 0;
+      ADC_TYPE_G    : AdcType := ADC_TYPE_CHARGE_C);
    port (
       -- Clock/Reset
       axiClk        : in  sl;
@@ -63,7 +64,7 @@ architecture rtl of RingBufferDmaRead is
       cnt           : natural range 0 to 256;
       dmaAck        : AxiReadDmaAckType;
       axiReadMaster : AxiReadMasterType;
-      axisMaster    : AxiStreamMasterType;
+      txMaster      : AxiStreamMasterType;
       state         : StateType;
    end record RegType;
 
@@ -84,15 +85,17 @@ architecture rtl of RingBufferDmaRead is
          arqos      => (others => '0'),
          arregion   => (others => '0'),
          rready     => '0'),
-      axisMaster    => AXI_STREAM_MASTER_INIT_C,
+      txMaster      => AXI_STREAM_MASTER_INIT_C,
       state         => READ_ADDR_S);
 
    signal r   : RegType := REG_INIT_C;
    signal rin : RegType;
 
+   signal txSlave : AxiStreamSlaveType;
+
 begin
 
-   comb : process (axiReadSlave, axiRst, axisSlave, dmaReq, r) is
+   comb : process (axiReadSlave, axiRst, dmaReq, r, txSlave) is
       variable v : RegType;
    begin
       -- Latch the current value
@@ -103,8 +106,8 @@ begin
       if axiReadSlave.arready = '1' then
          v.axiReadMaster.arvalid := '0';
       end if;
-      if axisSlave.tReady = '1' then
-         v.axisMaster.tValid := '0';
+      if txSlave.tReady = '1' then
+         v.txMaster.tValid := '0';
       end if;
 
       -- State Machine
@@ -123,7 +126,7 @@ begin
                v.axiReadMaster.araddr  := dmaReq.address;
 
                -- Reset the flag
-               v.axisMaster.tLast := '0';
+               v.txMaster.tLast := '0';
 
                -- Next State
                v.state := READ_DATA_S;
@@ -132,13 +135,13 @@ begin
          ----------------------------------------------------------------------
          when READ_DATA_S =>
             -- Check for new data
-            if (axiReadSlave.rvalid = '1') and (r.axisMaster.tValid = '0') then
+            if (axiReadSlave.rvalid = '1') and (v.txMaster.tValid = '0') then
 
                -- Move the data
-               v.axisMaster.tValid := not(r.axisMaster.tLast);
+               v.txMaster.tValid := not(r.txMaster.tLast);
 
                -- Write Data channel
-               v.axisMaster.tData(WORD_SIZE_C-1 downto 0) := axiReadSlave.rdata(
+               v.txMaster.tData(WORD_SIZE_C-1 downto 0) := axiReadSlave.rdata(
                   r.wrdCnt*WORD_SIZE_C+WORD_SIZE_C-1 downto
                   r.wrdCnt*WORD_SIZE_C);
 
@@ -170,7 +173,7 @@ begin
                if (r.cnt = 256) then
 
                   -- Terminate the frame
-                  v.axisMaster.tLast := '1';
+                  v.txMaster.tLast := '1';
 
                else
 
@@ -184,7 +187,7 @@ begin
       end case;
 
       -- Forward the state of the state machine
-      if (r.state = READ_ADDR_S) and (r.axiReadMaster.arvalid = '0') and (r.axisMaster.tValid = '0') then
+      if (r.state = READ_ADDR_S) and (r.axiReadMaster.arvalid = '0') and (r.txMaster.tValid = '0') then
          -- Set the flag
          v.dmaAck.idle := '1';
       else
@@ -194,7 +197,6 @@ begin
 
       -- Outputs
       dmaAck               <= r.dmaAck;
-      axisMaster           <= r.axisMaster;
       axiReadMaster        <= r.axiReadMaster;
       axiReadMaster.rready <= v.axiReadMaster.rready;
 
@@ -214,5 +216,17 @@ begin
          r <= rin after TPD_G;
       end if;
    end process seq;
+
+   U_AxiStreamPipeline : entity surf.AxiStreamPipeline
+      generic map (
+         TPD_G         => TPD_G,
+         PIPE_STAGES_G => PIPE_STAGES_G)
+      port map (
+         axisClk     => axiClk,
+         axisRst     => axiRst,
+         sAxisMaster => r.txMaster,
+         sAxisSlave  => txSlave,
+         mAxisMaster => axisMaster,
+         mAxisSlave  => axisSlave);
 
 end rtl;

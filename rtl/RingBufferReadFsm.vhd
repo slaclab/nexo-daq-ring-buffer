@@ -40,7 +40,6 @@ entity RingBufferReadFsm is
    port (
       -- Control/Monitor Interface
       enable       : in  sl;
-      calMode      : in  sl;
       dropTrig     : out sl;
       eofeEvent    : out sl;
       -- Clock and Reset
@@ -72,7 +71,7 @@ architecture rtl of RingBufferReadFsm is
       -- Trigger Message
       eventID     : slv(31 downto 0);
       eventType   : slv(15 downto 0);
-      readSize    : slv(11 downto 0);
+      readSize    : slv(15 downto 0);
       startTime   : slv(TS_WIDTH_C-1 downto 0);
       dropTrig    : sl;
       -- Readout Signals
@@ -80,7 +79,7 @@ architecture rtl of RingBufferReadFsm is
       readTime    : slv(TS_WIDTH_C-1 downto 0);
       trimStart   : slv(7 downto 0);
       readCh      : slv(3 downto 0);
-      readCnt     : slv(11 downto 0);
+      readCnt     : slv(15 downto 0);
       eofe        : sl;
       tValid      : sl;
       -- AXI stream
@@ -117,7 +116,7 @@ architecture rtl of RingBufferReadFsm is
 
 begin
 
-   comb : process (calMode, compSlave, enable, r, rdAck, readMaster, rst,
+   comb : process (compSlave, enable, r, rdAck, readMaster, rst,
                    trigRdMaster) is
       variable v : RegType;
    begin
@@ -155,7 +154,7 @@ begin
                   -- Latch the trigger message
                   v.eventID   := trigRdMaster.tData(31 downto 0);   -- 32-bit
                   v.eventType := trigRdMaster.tData(47 downto 32);  -- 16-bit
-                  v.readSize  := trigRdMaster.tData(59 downto 48);  -- 12-bit
+                  v.readSize  := trigRdMaster.tData(63 downto 48);  -- 16-bit
                   v.startTime := trigRdMaster.tData(TS_WIDTH_C+63 downto 64);  -- TS_WIDTH_C bits
 
                   -- Init the readTime
@@ -164,11 +163,16 @@ begin
                   -- Init the trimStart
                   v.trimStart := v.startTime(7 downto 0);
 
-                  -- Check if this engine is enabled and not in calibration mode
-                  if (enable = '1') and (calMode = '0') then
+                  -- Check if this engine is enabled
+                  if (enable = '1') then
 
                      -- Next state
                      v.state := DMA_REQ_S;
+
+                  else
+
+                     -- Set the error flag
+                     v.dropTrig := '1';
 
                   end if;
 
@@ -191,8 +195,8 @@ begin
                -- Set Memory Address offset
                v.rdReq.address(11 downto 0)  := x"000";  -- 4kB address alignment
                v.rdReq.address(15 downto 12) := r.readCh;  -- Cache buffer index
-               v.rdReq.address(28 downto 16) := r.readTime(20 downto 8);  -- Address.BIT[28:16] = TimeStamp[20:8]
-               v.rdReq.address(33 downto 29) := toSlv(STREAM_INDEX_G, 5);  -- AXI Stream Index
+               v.rdReq.address(30 downto 16) := r.readTime(22 downto 8);  -- Address.BIT[30:16] = TimeStamp[22:8]
+               v.rdReq.address(33 downto 31) := toSlv(STREAM_INDEX_G, 3);  -- AXI Stream Index
 
                -- Check for first DMA request per AXI stream output
                if (r.readTime = r.startTime) then
@@ -227,29 +231,26 @@ begin
                v.compMaster.tData(47 downto 32) := r.eventType;
 
                -- Trigger Decision's Readout Size (zero inclusive)
-               v.compMaster.tData(59 downto 48) := r.readSize;
+               v.compMaster.tData(63 downto 48) := r.readSize;
 
                -- Ring Engine Stream ID
-               v.compMaster.tData(63 downto 60) := r.readCh;
+               v.compMaster.tData(67 downto 64) := r.readCh;
 
                -- Ring Engine Stream Index
-               v.compMaster.tData(68 downto 64) := toSlv(STREAM_INDEX_G, 5);
+               v.compMaster.tData(70 downto 68) := toSlv(STREAM_INDEX_G, 3);
 
                -- DDR DIMM Index
-               v.compMaster.tData(70 downto 69) := toSlv(DDR_DIMM_INDEX_G, 2);
+               v.compMaster.tData(72 downto 71) := toSlv(DDR_DIMM_INDEX_G, 2);
 
                -- ADC_TYPE_G
                if (ADC_TYPE_G = ADC_TYPE_CHARGE_C) then
-                  v.compMaster.tData(71) := '1';  -- ADC_TYPE_CHARGE_C
+                  v.compMaster.tData(73) := '1';  -- ADC_TYPE_CHARGE_C
                else
-                  v.compMaster.tData(71) := '0';  -- PHOTON_AXIS_CONFIG_C
+                  v.compMaster.tData(73) := '0';  -- PHOTON_AXIS_CONFIG_C
                end if;
 
-               -- Normal Triggered Mode
-               v.compMaster.tData(72) := '0';
-
                -- "TBD" field zero'd out
-               v.compMaster.tData(95 downto 73) := (others => '0');
+               v.compMaster.tData(95 downto 74) := (others => '0');
 
                -- Next state
                v.state := DATA_HDR_S;

@@ -34,6 +34,7 @@ use nexo_daq_ring_buffer.RingBufferDmaPkg.all;
 entity RingBufferDmaWrite is
    generic (
       TPD_G          : time    := 1 ns;
+      PIPE_STAGES_G  : natural := 0;
       ADC_TYPE_G     : AdcType := ADC_TYPE_CHARGE_C;
       STREAM_INDEX_G : natural := 0);
    port (
@@ -64,7 +65,7 @@ architecture rtl of RingBufferDmaWrite is
       sof            : sl;
       awlen          : slv(7 downto 0);
       axiWriteMaster : AxiWriteMasterType;
-      axisSlave      : AxiStreamSlaveType;
+      rxSlave        : AxiStreamSlaveType;
       state          : StateType;
    end record RegType;
 
@@ -90,22 +91,37 @@ architecture rtl of RingBufferDmaWrite is
          wid         => (others => '0'),
          wstrb       => (others => '1'),  -- always 64 byte write for performance reasons
          bready      => '0'),
-      axisSlave      => AXI_STREAM_SLAVE_INIT_C,
+      rxSlave        => AXI_STREAM_SLAVE_INIT_C,
       state          => WRITE_ADDR_S);
 
    signal r   : RegType := REG_INIT_C;
    signal rin : RegType;
 
+   signal rxMaster : AxiStreamMasterType;
+   signal rxSlave  : AxiStreamSlaveType;
+
 begin
 
-   comb : process (axiRst, axiWriteSlave, axisMaster, r) is
+   U_AxiStreamPipeline : entity surf.AxiStreamPipeline
+      generic map (
+         TPD_G         => TPD_G,
+         PIPE_STAGES_G => PIPE_STAGES_G)
+      port map (
+         axisClk     => axiClk,
+         axisRst     => axiRst,
+         sAxisMaster => axisMaster,
+         sAxisSlave  => axisSlave,
+         mAxisMaster => rxMaster,
+         mAxisSlave  => rxSlave);
+
+   comb : process (axiRst, axiWriteSlave, r, rxMaster) is
       variable v : RegType;
    begin
       -- Latch the current value
       v := r;
 
       -- Flow Control
-      v.axisSlave.tReady      := '0';
+      v.rxSlave.tReady        := '0';
       v.axiWriteMaster.bready := '0';
       if axiWriteSlave.awready = '1' then
          v.axiWriteMaster.awvalid := '0';
@@ -124,14 +140,14 @@ begin
             v.awlen  := getAxiLen(AXI_CONFIG_C, BURST_SIZE_C);  -- used for simulation debugging
 
             -- Check if enabled and timeout
-            if (axisMaster.tValid = '1') and (r.axiWriteMaster.awvalid = '0') then
+            if (rxMaster.tValid = '1') and (r.axiWriteMaster.awvalid = '0') then
 
                -- Write Address channel
                v.axiWriteMaster.awvalid              := '1';
                v.axiWriteMaster.awaddr(11 downto 0)  := x"000";  -- 4kB address alignment
-               v.axiWriteMaster.awaddr(15 downto 12) := axisMaster.tData(3 downto 0);  -- Cache buffer index
-               v.axiWriteMaster.awaddr(28 downto 16) := axisMaster.tData(20 downto 8);  -- Address.BIT[28:16] = TimeStamp[20:8]
-               v.axiWriteMaster.awaddr(33 downto 29) := toSlv(STREAM_INDEX_G, 5);  -- AXI Stream Index
+               v.axiWriteMaster.awaddr(15 downto 12) := rxMaster.tData(3 downto 0);  -- Cache buffer index
+               v.axiWriteMaster.awaddr(30 downto 16) := rxMaster.tData(22 downto 8);  -- Address.BIT[30:16] = TimeStamp[22:8]
+               v.axiWriteMaster.awaddr(33 downto 31) := toSlv(STREAM_INDEX_G, 3);  -- AXI Stream Index
 
                -- Next State
                v.state := WRITE_DATA_S;
@@ -140,15 +156,15 @@ begin
          ----------------------------------------------------------------------
          when WRITE_DATA_S =>
             -- Check if ready to move write data
-            if (axisMaster.tValid = '1') and (v.axiWriteMaster.wvalid = '0') then
+            if (rxMaster.tValid = '1') and (v.axiWriteMaster.wvalid = '0') then
 
                -- Accept the data
-               v.axisSlave.tReady := '1';
+               v.rxSlave.tReady := '1';
 
                -- Write Data channel
                v.axiWriteMaster.wdata(
                   r.wrdCnt*WORD_SIZE_C+WORD_SIZE_C-1 downto
-                  r.wrdCnt*WORD_SIZE_C) := axisMaster.tData(WORD_SIZE_C-1 downto 0);
+                  r.wrdCnt*WORD_SIZE_C) := rxMaster.tData(WORD_SIZE_C-1 downto 0);
 
                -- Check for start of frame flag
                if (r.sof = '1') then
@@ -184,7 +200,7 @@ begin
                end if;
 
                -- Check for last transaction
-               if (axisMaster.tLast = '1') then
+               if (rxMaster.tLast = '1') then
 
                   -- Terminate the frame
                   v.axiWriteMaster.wvalid := '1';
@@ -212,7 +228,7 @@ begin
       end case;
 
       -- Outputs
-      axisSlave      <= v.axisSlave;
+      rxSlave        <= v.rxSlave;
       axiWriteMaster <= r.axiWriteMaster;
 
       -- Reset

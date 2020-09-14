@@ -36,9 +36,7 @@ entity RingBufferWriteFsm is
    port (
       -- Control/Monitor Interface
       enable      : in  sl;
-      calMode     : in  sl;
       dropFrame   : out sl;
-      calEventID  : out slv(31 downto 0);
       -- Clock and Reset
       clk         : in  sl;
       rst         : in  sl;
@@ -47,10 +45,7 @@ entity RingBufferWriteFsm is
       adcSlave    : out AxiStreamSlaveType;
       -- DMA Write Interface
       writeMaster : out AxiStreamMasterType;
-      writeSlave  : in  AxiStreamSlaveType;
-      -- Compression Inbound Interface
-      compMaster  : out AxiStreamMasterType;
-      compSlave   : in  AxiStreamSlaveType);
+      writeSlave  : in  AxiStreamSlaveType);
 end RingBufferWriteFsm;
 
 architecture rtl of RingBufferWriteFsm is
@@ -65,16 +60,12 @@ architecture rtl of RingBufferWriteFsm is
 
    type RdBuffStateType is (
       IDLE_S,
-      TRIG_HDR_S,
       DATA_HDR_S,
       MOVE_DLY_S,
       MOVE_S);
 
    type RegType is record
       dropFrame   : sl;
-      -- Calibration mode
-      calMode     : sl;
-      calEventID  : slv(31 downto 0);
       -- Common Ping-Pong Buffer Signals
       buffValid   : slv(NUM_BUFFER_C-1 downto 0);
       eventHdr    : Slv96Array(NUM_BUFFER_C-1 downto 0);
@@ -90,7 +81,7 @@ architecture rtl of RingBufferWriteFsm is
       wrBuffState : WrBuffStateType;
       -- Read Ping-Pong Buffer Signals
       rdSel       : natural range 0 to NUM_BUFFER_C-1;
-      txMaster    : AxiStreamMasterType;
+      writeMaster : AxiStreamMasterType;
       wrdCnt      : slv(7 downto 0);
       tsRdCnt     : slv(7 downto 0);
       readCh      : slv(3 downto 0);
@@ -100,9 +91,6 @@ architecture rtl of RingBufferWriteFsm is
    end record;
    constant REG_INIT_C : RegType := (
       dropFrame   => '0',
-      -- Calibration mode
-      calMode     => '0',
-      calEventID  => (others => '0'),
       -- Common Ping-Pong Buffer Signals
       buffValid   => (others => '0'),
       eventHdr    => (others => (others => '0')),
@@ -118,7 +106,7 @@ architecture rtl of RingBufferWriteFsm is
       wrBuffState => WR_BUFF_IDLE_S,
       -- Read Ping-Pong Buffer Signals
       rdSel       => 0,
-      txMaster    => AXI_STREAM_MASTER_INIT_C,
+      writeMaster => AXI_STREAM_MASTER_INIT_C,
       wrdCnt      => (others => '0'),
       tsRdCnt     => (others => '0'),
       readCh      => (others => '0'),
@@ -136,8 +124,6 @@ architecture rtl of RingBufferWriteFsm is
    signal ramRdAddr : slv(11 downto 0);
    signal ramRdData : Slv96Array(NUM_BUFFER_C-1 downto 0);
    signal rdEn      : slv(1 downto 0);
-
-   signal txSlave : AxiStreamSlaveType;
 
 begin
 
@@ -171,7 +157,7 @@ begin
 
    end generate GEN_PING_PONG;
 
-   comb : process (adcMaster, calMode, enable, r, ramRdData, rst, txSlave) is
+   comb : process (adcMaster, enable, r, ramRdData, rst, writeSlave) is
       variable v : RegType;
    begin
       -- Latch the current value
@@ -203,7 +189,10 @@ begin
                v.adcSlave.tReady := '1';
 
                -- Check for SOF and not EOF and phase alignment to timestamp
-               if (ssiGetUserSof(nexoAxisConfig(ADC_TYPE_G), adcMaster) = '1') and (adcMaster.tLast = '0') and (r.tsWrCnt = adcMaster.tData(7 downto 0)) and (enable = '1') then
+               if (ssiGetUserSof(nexoAxisConfig(ADC_TYPE_G), adcMaster) = '1')
+                  and (adcMaster.tLast = '0')
+                  and (r.tsWrCnt = adcMaster.tData(7 downto 0))
+                  and (enable = '1') then
 
                   -- Check for 1st time stamp
                   if (r.tsWrCnt = 0) then
@@ -216,10 +205,15 @@ begin
                   -- Next state
                   v.wrBuffState := WR_BUFF_MOVE_S;
 
-               elsif (adcMaster.tLast = '1') then
+               else
+
+                  -- Reset the timestamp write counter
+                  v.tsWrCnt := (others => '0');
 
                   -- Set the flag
-                  v.dropFrame := '1';
+                  if (adcMaster.tLast = '1') then
+                     v.dropFrame := '1';
+                  end if;
 
                end if;
 
@@ -274,10 +268,10 @@ begin
       --------------------------------------------------------------------------------
 
       -- AXI Stream Flow Control
-      if (txSlave.tReady = '1') then
-         v.txMaster.tValid := '0';
-         v.txMaster.tLast  := '0';
-         v.txMaster.tUser  := (others => '0');
+      if (writeSlave.tReady = '1') then
+         v.writeMaster.tValid := '0';
+         v.writeMaster.tLast  := '0';
+         v.writeMaster.tUser  := (others => '0');
       end if;
 
       -- State machine
@@ -286,77 +280,6 @@ begin
          when IDLE_S =>
             -- Check if buffer is ready to move
             if (r.buffValid(r.rdSel) = '1') then
-
-               -- Next state
-               v.rdBuffState := TRIG_HDR_S;
-
-            end if;
-         ----------------------------------------------------------------------
-         when TRIG_HDR_S =>
-            -- Check if ready to move data
-            if (v.txMaster.tValid = '0') then
-
-               -- Check for triggered readout mode
-               if (r.calMode = '0') then
-
-                  -- Don't write Trigger header
-                  v.txMaster.tValid := '0';
-
-                  -- Set the routing path
-                  v.txMaster.tDest := x"00";
-
-               -- Else calibration mode
-               else
-
-                  -- Write the Trigger header
-                  v.txMaster.tValid := '1';
-
-                  -- Set the routing path
-                  v.txMaster.tDest := x"01";
-
-               end if;
-
-               -- Set TID = Ring Engine Stream ID
-               v.txMaster.tId(3 downto 0) := r.readCh;
-
-               -- Insert the SOF (Start of Frame) bit
-               ssiSetUserSof(nexoAxisConfig(ADC_TYPE_G), v.txMaster, '1');
-
-               -- Insert the SOR (Start of Readout) bit
-               if (r.readCh = 0) then
-                  nexoSetUserSor(nexoAxisConfig(ADC_TYPE_G), v.txMaster, '1');
-               end if;
-
-               -- Trigger Decision's Event ID
-               v.txMaster.tData(31 downto 0) := r.calEventID;  -- Readout sequence counter
-
-               -- Trigger Decision's Event Type
-               v.txMaster.tData(47 downto 32) := x"FFFF";  -- EventType[0xFFFF] = Calibration
-
-               -- Trigger Decision's Readout Size (zero inclusive)
-               v.txMaster.tData(59 downto 48) := x"0FF";  -- 256 time slices
-
-               -- Ring Engine Stream ID
-               v.txMaster.tData(63 downto 60) := r.readCh;
-
-               -- Ring Engine Stream Index
-               v.txMaster.tData(68 downto 64) := toSlv(STREAM_INDEX_G, 5);
-
-               -- DDR DIMM Index
-               v.txMaster.tData(70 downto 69) := toSlv(DDR_DIMM_INDEX_G, 2);
-
-               -- ADC_TYPE_G
-               if (ADC_TYPE_G = ADC_TYPE_CHARGE_C) then
-                  v.txMaster.tData(71) := '1';  -- ADC_TYPE_CHARGE_C
-               else
-                  v.txMaster.tData(71) := '0';  -- PHOTON_AXIS_CONFIG_C
-               end if;
-
-               -- Calibration Mode
-               v.txMaster.tData(72) := '1';
-
-               -- "TBD" field zero'd out
-               v.txMaster.tData(95 downto 73) := (others => '0');
 
                -- Next state
                v.rdBuffState := DATA_HDR_S;
@@ -368,21 +291,16 @@ begin
             v.rdEn := "11";
 
             -- Check if ready to move data
-            if (v.txMaster.tValid = '0') then
+            if (r.writeMaster.tValid = '0') then
 
                -- Write the Data header
-               v.txMaster.tValid := '1';
+               v.writeMaster.tValid := '1';
 
                -- Copy the ADC header exactly
-               v.txMaster.tData(95 downto 0) := r.eventHdr(r.rdSel);
+               v.writeMaster.tData(95 downto 0) := r.eventHdr(r.rdSel);
 
-               -- Check for triggered readout mode
-               if (r.txMaster.tDest = 0) then
-
-                  -- Encode the metadata which gets masked off RingBufferDmaWrite.WRITE_DATA_S
-                  v.txMaster.tData(3 downto 0) := r.readCh;
-
-               end if;
+               -- Encode the metadata which gets masked off RingBufferDmaWrite.WRITE_DATA_S state
+               v.writeMaster.tData(3 downto 0) := r.readCh;
 
                -- Next state
                v.rdBuffState := MOVE_DLY_S;
@@ -417,14 +335,14 @@ begin
             v.rdEn := "00";
 
             -- Check if ready to move data
-            if (v.txMaster.tValid = '0') then
+            if (v.writeMaster.tValid = '0') then
 
                -- Advance the pipeline
                v.rdEn := "11";
 
                -- Move the ADC data
-               v.txMaster.tValid             := '1';
-               v.txMaster.tData(95 downto 0) := ramRdData(r.rdSel);
+               v.writeMaster.tValid             := '1';
+               v.writeMaster.tData(95 downto 0) := ramRdData(r.rdSel);
 
                -- Increment the counters
                v.tsRdCnt := r.tsRdCnt + 1;
@@ -440,13 +358,10 @@ begin
                   v.readCh := r.readCh + 1;
 
                   -- Set EOF (End of Frame)
-                  v.txMaster.tLast := '1';
+                  v.writeMaster.tLast := '1';
 
                   -- Check for last channel
                   if (r.readCh = 15) then
-
-                     -- Insert the EOR (End of Readout) bit
-                     nexoSetUserEor(nexoAxisConfig(ADC_TYPE_G), v.txMaster, '1');
 
                      -- Set the flag
                      v.buffValid(r.rdSel) := '0';
@@ -458,22 +373,13 @@ begin
                         v.rdSel := r.rdSel + 1;
                      end if;
 
-
-                     -- Check for calibration mode
-                     if (r.txMaster.tDest = x"01") then
-
-                        -- Increment the counter
-                        v.calEventID := r.calEventID + 1;
-
-                     end if;
-
                      -- Next state
                      v.rdBuffState := IDLE_S;
 
                   else
 
                      -- Next state
-                     v.rdBuffState := TRIG_HDR_S;
+                     v.rdBuffState := DATA_HDR_S;
 
                   end if;
 
@@ -482,17 +388,6 @@ begin
             end if;
       ----------------------------------------------------------------------
       end case;
-
-      -- Keep delay copy
-      v.calMode := calMode;
-
-      -- Check if calMode asserted
-      if (r.calMode = '0') and (v.calMode = '1') then
-
-         -- Reset eventID counter
-         v.calEventID := (others => '0');
-
-      end if;
 
       --------------------------------------------------------------------------------
       -- Outputs
@@ -510,9 +405,9 @@ begin
       rdEn                   <= v.rdEn;  -- comb (not registered) output
 
       -- Write Outputs
-      adcSlave   <= v.adcSlave;         -- comb (not registered) output
-      dropFrame  <= r.dropFrame;
-      calEventID <= r.calEventID;
+      adcSlave    <= v.adcSlave;        -- comb (not registered) output
+      writeMaster <= r.writeMaster;
+      dropFrame   <= r.dropFrame;
 
       -- Reset
       if (rst = '1') then
@@ -530,23 +425,5 @@ begin
          r <= rin after TPD_G;
       end if;
    end process seq;
-
-   U_DeMux : entity surf.AxiStreamDeMux
-      generic map (
-         TPD_G         => TPD_G,
-         NUM_MASTERS_G => 2,
-         PIPE_STAGES_G => 1)
-      port map (
-         -- Clock and reset
-         axisClk         => clk,
-         axisRst         => rst,
-         -- Slave
-         sAxisMaster     => r.txMaster,
-         sAxisSlave      => txSlave,
-         -- Masters
-         mAxisMasters(0) => writeMaster,
-         mAxisMasters(1) => compMaster,
-         mAxisSlaves(0)  => writeSlave,
-         mAxisSlaves(1)  => compSlave);
 
 end rtl;

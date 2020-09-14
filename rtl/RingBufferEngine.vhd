@@ -69,7 +69,6 @@ architecture rtl of RingBufferEngine is
 
    type RegType is record
       enable         : sl;
-      calMode        : sl;
       cntRst         : sl;
       dropFrameCnt   : slv(31 downto 0);
       dropTrigCnt    : slv(31 downto 0);
@@ -80,7 +79,6 @@ architecture rtl of RingBufferEngine is
    end record;
    constant REG_INIT_C : RegType := (
       enable         => '1',
-      calMode        => '0',
       cntRst         => '0',
       dropFrameCnt   => (others => '0'),
       dropTrigCnt    => (others => '0'),
@@ -92,10 +90,9 @@ architecture rtl of RingBufferEngine is
    signal r   : RegType := REG_INIT_C;
    signal rin : RegType;
 
-   signal dropFrame  : sl;
-   signal dropTrig   : sl;
-   signal eofeEvent  : sl;
-   signal calEventID : slv(31 downto 0);
+   signal dropFrame : sl;
+   signal dropTrig  : sl;
+   signal eofeEvent : sl;
 
    signal rdReq : AxiReadDmaReqType;
    signal rdAck : AxiReadDmaAckType;
@@ -114,8 +111,8 @@ architecture rtl of RingBufferEngine is
 
 begin
 
-   comb : process (axilReadMaster, axilWriteMaster, calEventID, dropFrame,
-                   dropTrig, eofeEvent, r, rst) is
+   comb : process (axilReadMaster, axilWriteMaster, dropFrame, dropTrig,
+                   eofeEvent, r, rst) is
       variable v      : RegType;
       variable axilEp : AxiLiteEndPointType;
    begin
@@ -166,10 +163,8 @@ begin
       axiSlaveRegisterR(axilEp, x"10", 0, r.dropFrameCnt);
       axiSlaveRegisterR(axilEp, x"14", 0, r.dropTrigCnt);
       axiSlaveRegisterR(axilEp, x"18", 0, r.eofeEventCnt);
-      axiSlaveRegisterR(axilEp, x"1C", 0, calEventID);
 
       axiSlaveRegister (axilEp, x"80", 0, v.enable);
-      axiSlaveRegister (axilEp, x"84", 0, v.calMode);
 
       axiSlaveRegister (axilEp, x"FC", 0, v.cntRst);
 
@@ -210,9 +205,7 @@ begin
       port map (
          -- Control/Monitor Interface
          enable      => r.enable,
-         calMode     => r.calMode,
          dropFrame   => dropFrame,
-         calEventID  => calEventID,
          -- Clock and Reset
          clk         => clk,
          rst         => rst,
@@ -221,10 +214,7 @@ begin
          adcSlave    => adcSlave,
          -- DMA Write Interface
          writeMaster => writeMaster,
-         writeSlave  => writeSlave,
-         -- Compression Inbound Interface
-         compMaster  => compMasters(1),  -- Calibration stream
-         compSlave   => compSlaves(1));
+         writeSlave  => writeSlave);
 
    -----------------------
    -- DMA Write Controller
@@ -232,6 +222,7 @@ begin
    U_DmaWrite : entity nexo_daq_ring_buffer.RingBufferDmaWrite
       generic map (
          TPD_G          => TPD_G,
+         PIPE_STAGES_G  => 1,
          ADC_TYPE_G     => ADC_TYPE_G,
          STREAM_INDEX_G => STREAM_INDEX_G)
       port map (
@@ -250,8 +241,9 @@ begin
    ----------------------
    U_DmaRead : entity nexo_daq_ring_buffer.RingBufferDmaRead
       generic map (
-         TPD_G      => TPD_G,
-         ADC_TYPE_G => ADC_TYPE_G)
+         TPD_G         => TPD_G,
+         PIPE_STAGES_G => 1,
+         ADC_TYPE_G    => ADC_TYPE_G)
       port map (
          -- Clock and Reset
          axiClk        => clk,
@@ -278,7 +270,6 @@ begin
       port map (
          -- Control/Monitor Interface
          enable       => r.enable,
-         calMode      => r.calMode,
          dropTrig     => dropTrig,
          eofeEvent    => eofeEvent,
          -- Clock and Reset
@@ -293,24 +284,7 @@ begin
          readMaster   => readMaster,
          readSlave    => readSlave,
          -- Compression Inbound Interface
-         compMaster   => compMasters(0),  -- Trigger data read stream
-         compSlave    => compSlaves(0));
-
-   -----------------------------------------------------
-   -- MUX calibration stream and readout stream together
-   -----------------------------------------------------
-   U_Mux : entity nexo_daq_ring_buffer.RingBufferReadMux
-      generic map (
-         TPD_G => TPD_G)
-      port map (
-         -- Clock and reset
-         clk         => clk,
-         rst         => rst,
-         -- Slaves
-         compMasters => compMasters,
-         compSlaves  => compSlaves,
-         -- Master
-         compMaster  => compMaster,
-         compSlave   => compSlave);
+         compMaster   => compMaster,
+         compSlave    => compSlave);
 
 end rtl;

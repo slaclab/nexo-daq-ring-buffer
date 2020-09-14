@@ -36,107 +36,84 @@ use nexo_daq_trigger_decision.TriggerDecisionPkg.all;
 
 entity RingBufferTop is
    generic (
-      TPD_G                  : time                      := 1 ns;
-      SIMULATION_G           : boolean                   := false;
-      ADC_TYPE_G             : AdcTypeArray(29 downto 0) := (others => ADC_TYPE_CHARGE_C);
-      DDR_DIMM_INDEX_G       : natural                   := 0;
-      AXIS_SIZE_G            : positive range 1 to 30    := 15;
-      ADC_CLK_IS_CORE_CLK_G  : boolean                   := true;
-      TRIG_CLK_IS_CORE_CLK_G : boolean                   := true;
-      COMP_CLK_IS_CORE_CLK_G : boolean                   := true;
-      AXIL_CLK_IS_CORE_CLK_G : boolean                   := true;
-      AXIL_BASE_ADDR_G       : slv(31 downto 0)          := (others => '0'));
+      TPD_G                  : time                  := 1 ns;
+      SIMULATION_G           : boolean               := false;
+      ADC_TYPE_G             : AdcType               := ADC_TYPE_CHARGE_C;
+      DDR_DIMM_INDEX_G       : natural               := 0;
+      AXIL_XBAR_SIZE_C       : positive range 1 to 8 := 8;
+      ADC_CLK_IS_CORE_CLK_G  : boolean               := false;
+      TRIG_CLK_IS_CORE_CLK_G : boolean               := false;
+      COMP_CLK_IS_CORE_CLK_G : boolean               := false;
+      AXIL_CLK_IS_CORE_CLK_G : boolean               := false;
+      AXIL_BASE_ADDR_G       : slv(31 downto 0)      := (others => '0'));
    port (
       -- Core Clock/Reset
-      coreClk          : in  sl;
-      coreRst          : in  sl;
+      coreClk         : in  sl;
+      coreRst         : in  sl;
       -- DDR Memory Interface (ddrClk domain)
-      ddrClk           : in  sl;
-      ddrRst           : in  sl;
-      ddrWriteMaster   : out AxiWriteMasterType;
-      ddrWriteSlave    : in  AxiWriteSlaveType;
-      ddrReadMaster    : out AxiReadMasterType;
-      ddrReadSlave     : in  AxiReadSlaveType;
+      ddrClk          : in  slv(3 downto 0);
+      ddrRst          : in  slv(3 downto 0);
+      ddrWriteMasters : out AxiWriteMasterArray(3 downto 0);
+      ddrWriteSlaves  : in  AxiWriteSlaveArray(3 downto 0);
+      ddrReadMasters  : out AxiReadMasterArray(3 downto 0);
+      ddrReadSlaves   : in  AxiReadSlaveArray(3 downto 0);
       -- ADC Streams Interface (adcClk domain, nexoAxisConfig(ADC_TYPE_G))
-      adcClk           : in  sl;
-      adcRst           : in  sl;
-      adcMasters       : in  AxiStreamMasterArray(AXIS_SIZE_G-1 downto 0);
-      adcSlaves        : out AxiStreamSlaveArray(AXIS_SIZE_G-1 downto 0);
+      adcClk          : in  sl;
+      adcRst          : in  sl;
+      adcMasters      : in  AxiStreamMasterArray(29 downto 0);
+      adcSlaves       : out AxiStreamSlaveArray(29 downto 0);
       -- Trigger Decision Interface (trigClk domain, TRIG_DECISION_AXIS_CONFIG_C)
-      trigClk          : in  sl;
-      trigRst          : in  sl;
-      trigRdMaster     : in  AxiStreamMasterType;
-      trigRdSlave      : out AxiStreamSlaveType;
+      trigClk         : in  sl;
+      trigRst         : in  sl;
+      trigRdMaster    : in  AxiStreamMasterType;
+      trigRdSlave     : out AxiStreamSlaveType;
       -- Compression Interface (compClk domain, nexoAxisConfig(ADC_TYPE_G))
-      compClk          : in  sl;
-      compRst          : in  sl;
-      compMasters      : out AxiStreamMasterArray(AXIS_SIZE_G-1 downto 0);
-      compSlaves       : in  AxiStreamSlaveArray(AXIS_SIZE_G-1 downto 0);
+      compClk         : in  sl;
+      compRst         : in  sl;
+      compMasters     : out AxiStreamMasterArray(29 downto 0);
+      compSlaves      : in  AxiStreamSlaveArray(29 downto 0);
       -- AXI-Lite Interface (axilClk domain)
-      axilClk          : in  sl;
-      axilRst          : in  sl;
-      sAxilReadMaster  : in  AxiLiteReadMasterType;
-      sAxilReadSlave   : out AxiLiteReadSlaveType;
-      sAxilWriteMaster : in  AxiLiteWriteMasterType;
-      sAxilWriteSlave  : out AxiLiteWriteSlaveType);
+      axilClk         : in  sl;
+      axilRst         : in  sl;
+      axilReadMaster  : in  AxiLiteReadMasterType;
+      axilReadSlave   : out AxiLiteReadSlaveType;
+      axilWriteMaster : in  AxiLiteWriteMasterType;
+      axilWriteSlave  : out AxiLiteWriteSlaveType);
 end RingBufferTop;
 
 architecture mapping of RingBufferTop is
 
-   constant AXIL_CONFIG_C : AxiLiteCrossbarMasterConfigArray(AXIS_SIZE_G-1 downto 0) := genAxiLiteConfig(AXIS_SIZE_G, AXIL_BASE_ADDR_G, 13, 8);
+   constant AXIL_XBAR_SIZE_C : positive := 4;
 
-   signal axilReadMaster  : AxiLiteReadMasterType;
-   signal axilReadSlave   : AxiLiteReadSlaveType;
-   signal axilWriteMaster : AxiLiteWriteMasterType;
-   signal axilWriteSlave  : AxiLiteWriteSlaveType;
+   constant AXIL_XBAR_CONFIG_C : AxiLiteCrossbarMasterConfigArray(AXIL_XBAR_SIZE_C-1 downto 0) := genAxiLiteConfig(AXIL_XBAR_SIZE_C, AXIL_BASE_ADDR_G, 16, 12);
 
-   signal axilWriteMasters : AxiLiteWriteMasterArray(AXIS_SIZE_G-1 downto 0) := (others => AXI_LITE_WRITE_MASTER_INIT_C);
-   signal axilWriteSlaves  : AxiLiteWriteSlaveArray(AXIS_SIZE_G-1 downto 0)  := (others => AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C);
-   signal axilReadMasters  : AxiLiteReadMasterArray(AXIS_SIZE_G-1 downto 0)  := (others => AXI_LITE_READ_MASTER_INIT_C);
-   signal axilReadSlaves   : AxiLiteReadSlaveArray(AXIS_SIZE_G-1 downto 0)   := (others => AXI_LITE_READ_SLAVE_EMPTY_DECERR_C);
+   signal axilWriteMasters : AxiLiteWriteMasterArray(AXIL_XBAR_SIZE_C-1 downto 0) := (others => AXI_LITE_WRITE_MASTER_INIT_C);
+   signal axilWriteSlaves  : AxiLiteWriteSlaveArray(AXIL_XBAR_SIZE_C-1 downto 0)  := (others => AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C);
+   signal axilReadMasters  : AxiLiteReadMasterArray(AXIL_XBAR_SIZE_C-1 downto 0)  := (others => AXI_LITE_READ_MASTER_INIT_C);
+   signal axilReadSlaves   : AxiLiteReadSlaveArray(AXIL_XBAR_SIZE_C-1 downto 0)   := (others => AXI_LITE_READ_SLAVE_EMPTY_DECERR_C);
 
-   signal trigMaster : AxiStreamMasterType := AXI_STREAM_MASTER_INIT_C;
-   signal trigSlave  : AxiStreamSlaveType  := AXI_STREAM_SLAVE_FORCE_C;
+   signal trigRdMasters : AxiStreamMasterArray(AXIL_XBAR_SIZE_C-1 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);
+   signal trigRdSlaves  : AxiStreamSlaveArray(AXIL_XBAR_SIZE_C-1 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C);
 
-   signal trigMasters : AxiStreamMasterArray(AXIS_SIZE_G-1 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);
-   signal trigSlaves  : AxiStreamSlaveArray(AXIS_SIZE_G-1 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C);
+   constant STREAMS_C : NaturalArray(AXIL_XBAR_SIZE_C-1 downto 0) := (
+      0 => 8,
+      1 => 8,
+      2 => 7,
+      3 => 7);
 
-   signal chMasters : AxiStreamMasterArray(AXIS_SIZE_G-1 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);
-   signal chSlaves  : AxiStreamSlaveArray(AXIS_SIZE_G-1 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C);
+   constant LSB_C : NaturalArray(AXIL_XBAR_SIZE_C-1 downto 0) := (
+      0 => 0,
+      1 => 8,
+      2 => 16,
+      3 => 23);
 
-   signal cpMasters : AxiStreamMasterArray(AXIS_SIZE_G-1 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);
-   signal cpSlaves  : AxiStreamSlaveArray(AXIS_SIZE_G-1 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C);
-
-   signal axiWriteMasters : AxiWriteMasterArray(29 downto 0) := (others => AXI_WRITE_MASTER_INIT_C);
-   signal axiWriteSlaves  : AxiWriteSlaveArray(29 downto 0)  := (others => AXI_WRITE_SLAVE_INIT_C);
-   signal axiReadMasters  : AxiReadMasterArray(29 downto 0)  := (others => AXI_READ_MASTER_INIT_C);
-   signal axiReadSlaves   : AxiReadSlaveArray(29 downto 0)   := (others => AXI_READ_SLAVE_INIT_C);
+   constant MSB_C : NaturalArray(AXIL_XBAR_SIZE_C-1 downto 0) := (
+      0 => 7,
+      1 => 15,
+      2 => 22,
+      3 => 29);
 
 begin
-
-   -----------------------------------------
-   -- Convert AXI-Lite bus to coreClk domain
-   -----------------------------------------
-   U_AxiLiteAsync : entity surf.AxiLiteAsync
-      generic map (
-         TPD_G           => TPD_G,
-         COMMON_CLK_G    => AXIL_CLK_IS_CORE_CLK_G,
-         NUM_ADDR_BITS_G => 24)         -- PCIe BAR0 is 24-bits
-      port map (
-         -- Slave Interface
-         sAxiClk         => axilClk,
-         sAxiClkRst      => axilRst,
-         sAxiReadMaster  => sAxilReadMaster,
-         sAxiReadSlave   => sAxilReadSlave,
-         sAxiWriteMaster => sAxilWriteMaster,
-         sAxiWriteSlave  => sAxilWriteSlave,
-         -- Master Interface
-         mAxiClk         => coreClk,
-         mAxiClkRst      => coreRst,
-         mAxiReadMaster  => axilReadMaster,
-         mAxiReadSlave   => axilReadSlave,
-         mAxiWriteMaster => axilWriteMaster,
-         mAxiWriteSlave  => axilWriteSlave);
 
    --------------------
    -- AXI-Lite Crossbar
@@ -145,11 +122,11 @@ begin
       generic map (
          TPD_G              => TPD_G,
          NUM_SLAVE_SLOTS_G  => 1,
-         NUM_MASTER_SLOTS_G => AXIS_SIZE_G,
+         NUM_MASTER_SLOTS_G => AXIL_XBAR_SIZE_C,
          MASTERS_CONFIG_G   => AXIL_CONFIG_C)
       port map (
-         axiClk              => coreClk,
-         axiClkRst           => coreRst,
+         axiClk              => axilClk,
+         axiClkRst           => axilRst,
          sAxiWriteMasters(0) => axilWriteMaster,
          sAxiWriteSlaves(0)  => axilWriteSlave,
          sAxiReadMasters(0)  => axilReadMaster,
@@ -159,185 +136,76 @@ begin
          mAxiReadMasters     => axilReadMasters,
          mAxiReadSlaves      => axilReadSlaves);
 
-   ---------------------------------------------
-   -- Convert AXI stream buses to coreClk domain
-   ---------------------------------------------
-   ASYNC_TRIG : if (TRIG_CLK_IS_CORE_CLK_G = false) generate
-      U_ASYNC_FIFO : entity surf.AxiStreamFifoV2
-         generic map (
-            -- General Configurations
-            TPD_G               => TPD_G,
-            INT_PIPE_STAGES_G   => 0,
-            PIPE_STAGES_G       => 0,
-            -- FIFO configurations
-            MEMORY_TYPE_G       => "distributed",
-            GEN_SYNC_FIFO_G     => false,
-            FIFO_ADDR_WIDTH_G   => 5,
-            -- AXI Stream Port Configurations
-            SLAVE_AXI_CONFIG_G  => TRIG_DECISION_AXIS_CONFIG_C,
-            MASTER_AXI_CONFIG_G => TRIG_DECISION_AXIS_CONFIG_C)
-         port map (
-            -- Slave Port
-            sAxisClk    => trigClk,
-            sAxisRst    => trigRst,
-            sAxisMaster => trigRdMaster,
-            sAxisSlave  => trigRdSlave,
-            -- Master Port
-            mAxisClk    => coreClk,
-            mAxisRst    => coreRst,
-            mAxisMaster => trigMaster,
-            mAxisSlave  => trigSlave);
-   end generate;
-
-   SYNC_TRIG : if (TRIG_CLK_IS_CORE_CLK_G = true) generate
-      trigMaster  <= trigRdMaster;
-      trigRdSlave <= trigSlave;
-   end generate;
-
    ----------------------
    -- AXI Stream Repeater
    ----------------------
    U_Repeater : entity surf.AxiStreamRepeater
       generic map (
          TPD_G                => TPD_G,
-         NUM_MASTERS_G        => AXIS_SIZE_G,
+         NUM_MASTERS_G        => AXIL_XBAR_SIZE_C,
          INPUT_PIPE_STAGES_G  => 1,
          OUTPUT_PIPE_STAGES_G => 1)
       port map (
          -- Clock and reset
-         axisClk      => coreClk,
-         axisRst      => coreRst,
+         axisClk      => trigClk,
+         axisRst      => trigRst,
          -- Slave
-         sAxisMaster  => trigMaster,
-         sAxisSlave   => trigSlave,
+         sAxisMaster  => trigRdMaster,
+         sAxisSlave   => trigRdSlave,
          -- Masters
-         mAxisMasters => trigMasters,
-         mAxisSlaves  => trigSlaves);
+         mAxisMasters => trigRdMasters,
+         mAxisSlaves  => trigRdSlaves);
 
-   GEN_ENGINE_VEC :
-   for i in AXIS_SIZE_G-1 downto 0 generate
-
-      ASYNC_CH : if (ADC_CLK_IS_CORE_CLK_G = false) generate
-         U_ASYNC_FIFO : entity surf.AxiStreamFifoV2
-            generic map (
-               -- General Configurations
-               TPD_G               => TPD_G,
-               INT_PIPE_STAGES_G   => 0,
-               PIPE_STAGES_G       => 0,
-               -- FIFO configurations
-               MEMORY_TYPE_G       => "distributed",
-               GEN_SYNC_FIFO_G     => false,
-               FIFO_ADDR_WIDTH_G   => 5,
-               -- AXI Stream Port Configurations
-               SLAVE_AXI_CONFIG_G  => nexoAxisConfig(ADC_TYPE_G(i)),
-               MASTER_AXI_CONFIG_G => nexoAxisConfig(ADC_TYPE_G(i)))
-            port map (
-               -- Slave Port
-               sAxisClk    => trigClk,
-               sAxisRst    => trigRst,
-               sAxisMaster => adcMasters(i),
-               sAxisSlave  => adcSlaves(i),
-               -- Master Port
-               mAxisClk    => coreClk,
-               mAxisRst    => coreRst,
-               mAxisMaster => chMasters(i),
-               mAxisSlave  => chSlaves(i));
-      end generate;
-
-      SYNC_CH : if (ADC_CLK_IS_CORE_CLK_G = true) generate
-         chMasters(i) <= adcMasters(i);
-         adcSlaves(i) <= chSlaves(i);
-      end generate;
-
-      ---------------------
-      -- Ring Buffer Engine
-      ---------------------
-      U_Engine : entity nexo_daq_ring_buffer.RingBufferEngine
+   -------------------
+   -- Ring Buffer DIMM
+   -------------------
+   GEN_VEC :
+   for i in AXIL_XBAR_SIZE_C-1 downto 0 generate
+      U_RingBufferTop : entity nexo_daq_ring_buffer.RingBufferDimm
          generic map (
-            TPD_G            => TPD_G,
-            SIMULATION_G     => SIMULATION_G,
-            ADC_TYPE_G       => ADC_TYPE_G(i),
-            DDR_DIMM_INDEX_G => DDR_DIMM_INDEX_G,
-            STREAM_INDEX_G   => i)
+            TPD_G                  => TPD_G,
+            SIMULATION_G           => SIMULATION_G,
+            ADC_TYPE_G             => ADC_TYPE_G,
+            DDR_DIMM_INDEX_G       => i,
+            AXIS_SIZE_G            => STREAMS_C(i),
+            ADC_CLK_IS_CORE_CLK_G  => ADC_CLK_IS_CORE_CLK_G,
+            TRIG_CLK_IS_CORE_CLK_G => TRIG_CLK_IS_CORE_CLK_G,
+            COMP_CLK_IS_CORE_CLK_G => COMP_CLK_IS_CORE_CLK_G,
+            AXIL_CLK_IS_CORE_CLK_G => AXIL_CLK_IS_CORE_CLK_G,
+            AXIL_BASE_ADDR_G       => AXIL_XBAR_CONFIG_C(i).baseAddr)
          port map (
-            -- Clock and Reset
-            clk             => coreClk,
-            rst             => coreRst,
-            -- Compression Inbound Interface
-            adcMaster       => chMasters(i),
-            adcSlave        => chSlaves(i),
-            -- Trigger Decision Interface
-            trigRdMaster    => trigMasters(i),
-            trigRdSlave     => trigSlaves(i),
-            -- Compression Interface
-            compMaster      => cpMasters(i),
-            compSlave       => cpSlaves(i),
-            -- AXI4 Interface
-            axiWriteMaster  => axiWriteMasters(i),
-            axiWriteSlave   => axiWriteSlaves(i),
-            axiReadMaster   => axiReadMasters(i),
-            axiReadSlave    => axiReadSlaves(i),
-            -- AXI-Lite Interface
-            axilReadMaster  => axilReadMasters(i),
-            axilReadSlave   => axilReadSlaves(i),
-            axilWriteMaster => axilWriteMasters(i),
-            axilWriteSlave  => axilWriteSlaves(i));
-
-      ASYNC_COMP : if (COMP_CLK_IS_CORE_CLK_G = false) generate
-         U_ASYNC_FIFO : entity surf.AxiStreamFifoV2
-            generic map (
-               -- General Configurations
-               TPD_G               => TPD_G,
-               INT_PIPE_STAGES_G   => 0,
-               PIPE_STAGES_G       => 0,
-               -- FIFO configurations
-               MEMORY_TYPE_G       => "distributed",
-               GEN_SYNC_FIFO_G     => false,
-               FIFO_ADDR_WIDTH_G   => 5,
-               -- AXI Stream Port Configurations
-               SLAVE_AXI_CONFIG_G  => nexoAxisConfig(ADC_TYPE_G(i)),
-               MASTER_AXI_CONFIG_G => nexoAxisConfig(ADC_TYPE_G(i)))
-            port map (
-               -- Slave Port
-               sAxisClk    => coreClk,
-               sAxisRst    => coreRst,
-               sAxisMaster => cpMasters(i),
-               sAxisSlave  => cpSlaves(i),
-               -- Master Port
-               mAxisClk    => compClk,
-               mAxisRst    => compRst,
-               mAxisMaster => compMasters(i),
-               mAxisSlave  => compSlaves(i));
-      end generate;
-
-      SYNC_COMP : if (COMP_CLK_IS_CORE_CLK_G = true) generate
-         compMasters(i) <= cpMasters(i);
-         cpSlaves(i)    <= compSlaves(i);
-      end generate;
-
-   end generate GEN_ENGINE_VEC;
-
-   -----------------------
-   -- AXI4 Memory Crossbar
-   -----------------------
-   U_AxiXbar : entity nexo_daq_ring_buffer.RingBufferAxiXbar
-      generic map (
-         TPD_G => TPD_G,
-         AXIS_SIZE_G => AXIS_SIZE_G)
-      port map (
-         -- Application AXI4 Interface (coreClk domain)
-         coreClk          => coreClk,
-         coreRst          => coreRst,
-         sAxiWriteMasters => axiWriteMasters,
-         sAxiWriteSlaves  => axiWriteSlaves,
-         sAxiReadMasters  => axiReadMasters,
-         sAxiReadSlaves   => axiReadSlaves,
-         -- DDR Memory Interface (ddrClk domain)
-         ddrClk           => ddrClk,
-         ddrRst           => ddrRst,
-         ddrWriteMaster   => ddrWriteMaster,
-         ddrWriteSlave    => ddrWriteSlave,
-         ddrReadMaster    => ddrReadMaster,
-         ddrReadSlave     => ddrReadSlave);
+            -- Core Clock/Reset
+            coreClk          => coreClk,
+            coreRst          => coreRst,
+            -- DDR Memory Interface (ddrClk domain)
+            ddrClk           => ddrClk(i),
+            ddrRst           => ddrRst(i),
+            ddrWriteMaster   => ddrWriteMasters(i),
+            ddrWriteSlave    => ddrWriteSlaves(i),
+            ddrReadMaster    => ddrReadMasters(i),
+            ddrReadSlave     => ddrReadSlaves(i),
+            -- ADC Streams Interface (adcClk domain, nexoAxisConfig(ADC_TYPE_G))
+            adcClk           => adcClk,
+            adcRst           => adcRst,
+            adcMasters       => adcMasters(MSB_C(i) downto LSB_C(i)),
+            adcSlaves        => adcSlaves(MSB_C(i) downto LSB_C(i)),
+            -- Trigger Decision Interface (trigClk domain, TRIG_DECISION_AXIS_CONFIG_C)
+            trigClk          => trigClk,
+            trigRst          => trigRst,
+            trigRdMaster     => trigRdMasters(i),
+            trigRdSlave      => trigRdSlaves(i),
+            -- Compression Interface (compClk domain, nexoAxisConfig(ADC_TYPE_G))
+            compClk          => compClk,
+            compRst          => compRst,
+            compMasters      => compMasters(MSB_C(i) downto LSB_C(i)),
+            compSlaves       => compSlaves(MSB_C(i) downto LSB_C(i)),
+            -- AXI-Lite Interface (axilClk domain)
+            axilClk          => axilClk,
+            axilRst          => axilRst,
+            sAxilReadMaster  => axilReadMasters(i),
+            sAxilReadSlave   => axilReadSlaves(i),
+            sAxilWriteMaster => axilWriteMasters(i),
+            sAxilWriteSlave  => axilWriteSlaves(i));
+   end generate GEN_VEC;
 
 end mapping;

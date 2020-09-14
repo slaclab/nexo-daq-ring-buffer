@@ -74,23 +74,8 @@ class StreamEngine(pr.Device):
         ))
 
         self.add(pr.RemoteVariable(
-            name         = 'CalEventID',
-            offset       = 0x1C,
-            bitSize      = 32,
-            mode         = 'RO',
-            pollInterval = 1,
-        ))
-
-        self.add(pr.RemoteVariable(
             name         = 'EnableEngine',
             offset       = 0x80,
-            bitSize      = 1,
-            mode         = 'RW',
-        ))
-
-        self.add(pr.RemoteVariable(
-            name         = 'CalMode',
-            offset       = 0x84,
             bitSize      = 1,
             mode         = 'RW',
         ))

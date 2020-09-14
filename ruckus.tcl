@@ -28,7 +28,10 @@ loadSource -lib nexo_daq_ring_buffer -dir "$::DIR_PATH/rtl/RingBufferAxiXbar"
 
 ########################################################
 
-loadIpCore -dir "$::DIR_PATH/ip/RingBufferAxiXbar"
-# loadSource -dir "$::DIR_PATH/ip/RingBufferAxiXbar"
+loadIpCore -path "$::DIR_PATH/ip/RingBufferAxiXbar/RingBufferAxiXbar7to1.xci"
+# loadSource -path "$::DIR_PATH/ip/RingBufferAxiXbar/RingBufferAxiXbar7to1.dcp"
+
+loadIpCore -path "$::DIR_PATH/ip/RingBufferAxiXbar/RingBufferAxiXbar8to1.xci"
+# loadSource -path "$::DIR_PATH/ip/RingBufferAxiXbar/RingBufferAxiXbar8to1.dcp"
 
 ########################################################

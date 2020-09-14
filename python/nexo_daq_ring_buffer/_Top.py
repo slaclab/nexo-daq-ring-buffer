@@ -12,7 +12,7 @@ import pyrogue              as pr
 import nexo_daq_ring_buffer as ringBuff
 
 class Top(pr.Device):
-    def __init__(self, numStream=23, **kwargs):
+    def __init__(self, numStream=8, **kwargs):
         super().__init__(**kwargs)
 
         for i in range(numStream):
