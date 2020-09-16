@@ -39,8 +39,6 @@ entity RingBufferTop is
       TPD_G                  : time                  := 1 ns;
       SIMULATION_G           : boolean               := false;
       ADC_TYPE_G             : AdcType               := ADC_TYPE_CHARGE_C;
-      DDR_DIMM_INDEX_G       : natural               := 0;
-      AXIL_XBAR_SIZE_C       : positive range 1 to 8 := 8;
       ADC_CLK_IS_CORE_CLK_G  : boolean               := false;
       TRIG_CLK_IS_CORE_CLK_G : boolean               := false;
       COMP_CLK_IS_CORE_CLK_G : boolean               := false;
@@ -123,7 +121,7 @@ begin
          TPD_G              => TPD_G,
          NUM_SLAVE_SLOTS_G  => 1,
          NUM_MASTER_SLOTS_G => AXIL_XBAR_SIZE_C,
-         MASTERS_CONFIG_G   => AXIL_CONFIG_C)
+         MASTERS_CONFIG_G   => AXIL_XBAR_CONFIG_C)
       port map (
          axiClk              => axilClk,
          axiClkRst           => axilRst,
