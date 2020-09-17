@@ -74,12 +74,12 @@ package RingBufferPkg is
    -- Note: EOF (End of Frame) = AXI stream TLAST
    --
    ------------------------------------------------------------------------
-   constant NEXO_EOFE_C : natural := SSI_EOFE_C; -- 0
+   constant NEXO_EOFE_C : natural := SSI_EOFE_C;  -- 0
 
    ---------------------------------------------------------------
    -- SOF (Start of Frame): TUSER.BIT[1] (first byte in the frame)
    ---------------------------------------------------------------
-   constant NEXO_SOF_C : natural := SSI_SOF_C; -- 1
+   constant NEXO_SOF_C : natural := SSI_SOF_C;  -- 1
 
    -----------------------------------------------------------------
    -- SOR (Start of Readout): TUSER.BIT[2] (first byte in the frame)
@@ -90,6 +90,8 @@ package RingBufferPkg is
    -- EOR (End of Readout): TUSER.BIT[3] (last byte in the frame)
    -----------------------------------------------------------------
    constant NEXO_EOR_C : natural := 3;
+
+   function ite(i : boolean; t : AdcType; e : AdcType) return AdcType;
 
    function nexoAxisConfig (
       adcConfig : AdcType)
@@ -118,6 +120,11 @@ package RingBufferPkg is
 end package RingBufferPkg;
 
 package body RingBufferPkg is
+
+   function ite (i : boolean; t : AdcType; e : AdcType) return AdcType is
+   begin
+      if (i) then return t; else return e; end if;
+   end function ite;
 
    function nexoAxisConfig (
       adcConfig : AdcType)

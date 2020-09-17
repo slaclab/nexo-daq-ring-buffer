@@ -81,31 +81,31 @@ end RingBufferTop;
 
 architecture mapping of RingBufferTop is
 
-   constant AXIL_XBAR_SIZE_C : positive := 4;
+   constant NUM_DIMM_C : positive := 4;
 
-   constant AXIL_XBAR_CONFIG_C : AxiLiteCrossbarMasterConfigArray(AXIL_XBAR_SIZE_C-1 downto 0) := genAxiLiteConfig(AXIL_XBAR_SIZE_C, AXIL_BASE_ADDR_G, 16, 12);
+   constant AXIL_XBAR_CONFIG_C : AxiLiteCrossbarMasterConfigArray(NUM_DIMM_C-1 downto 0) := genAxiLiteConfig(NUM_DIMM_C, AXIL_BASE_ADDR_G, 16, 12);
 
-   signal axilWriteMasters : AxiLiteWriteMasterArray(AXIL_XBAR_SIZE_C-1 downto 0) := (others => AXI_LITE_WRITE_MASTER_INIT_C);
-   signal axilWriteSlaves  : AxiLiteWriteSlaveArray(AXIL_XBAR_SIZE_C-1 downto 0)  := (others => AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C);
-   signal axilReadMasters  : AxiLiteReadMasterArray(AXIL_XBAR_SIZE_C-1 downto 0)  := (others => AXI_LITE_READ_MASTER_INIT_C);
-   signal axilReadSlaves   : AxiLiteReadSlaveArray(AXIL_XBAR_SIZE_C-1 downto 0)   := (others => AXI_LITE_READ_SLAVE_EMPTY_DECERR_C);
+   signal axilWriteMasters : AxiLiteWriteMasterArray(NUM_DIMM_C-1 downto 0) := (others => AXI_LITE_WRITE_MASTER_INIT_C);
+   signal axilWriteSlaves  : AxiLiteWriteSlaveArray(NUM_DIMM_C-1 downto 0)  := (others => AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C);
+   signal axilReadMasters  : AxiLiteReadMasterArray(NUM_DIMM_C-1 downto 0)  := (others => AXI_LITE_READ_MASTER_INIT_C);
+   signal axilReadSlaves   : AxiLiteReadSlaveArray(NUM_DIMM_C-1 downto 0)   := (others => AXI_LITE_READ_SLAVE_EMPTY_DECERR_C);
 
-   signal trigRdMasters : AxiStreamMasterArray(AXIL_XBAR_SIZE_C-1 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);
-   signal trigRdSlaves  : AxiStreamSlaveArray(AXIL_XBAR_SIZE_C-1 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C);
+   signal trigRdMasters : AxiStreamMasterArray(NUM_DIMM_C-1 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);
+   signal trigRdSlaves  : AxiStreamSlaveArray(NUM_DIMM_C-1 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C);
 
-   constant STREAMS_C : NaturalArray(AXIL_XBAR_SIZE_C-1 downto 0) := (
+   constant STREAMS_C : NaturalArray(NUM_DIMM_C-1 downto 0) := (
       0 => 8,
       1 => 8,
       2 => 7,
       3 => 7);
 
-   constant LSB_C : NaturalArray(AXIL_XBAR_SIZE_C-1 downto 0) := (
+   constant LSB_C : NaturalArray(NUM_DIMM_C-1 downto 0) := (
       0 => 0,
       1 => 8,
       2 => 16,
       3 => 23);
 
-   constant MSB_C : NaturalArray(AXIL_XBAR_SIZE_C-1 downto 0) := (
+   constant MSB_C : NaturalArray(NUM_DIMM_C-1 downto 0) := (
       0 => 7,
       1 => 15,
       2 => 22,
@@ -120,7 +120,7 @@ begin
       generic map (
          TPD_G              => TPD_G,
          NUM_SLAVE_SLOTS_G  => 1,
-         NUM_MASTER_SLOTS_G => AXIL_XBAR_SIZE_C,
+         NUM_MASTER_SLOTS_G => NUM_DIMM_C,
          MASTERS_CONFIG_G   => AXIL_XBAR_CONFIG_C)
       port map (
          axiClk              => axilClk,
@@ -140,7 +140,7 @@ begin
    U_Repeater : entity surf.AxiStreamRepeater
       generic map (
          TPD_G                => TPD_G,
-         NUM_MASTERS_G        => AXIL_XBAR_SIZE_C,
+         NUM_MASTERS_G        => NUM_DIMM_C,
          INPUT_PIPE_STAGES_G  => 1,
          OUTPUT_PIPE_STAGES_G => 1)
       port map (
@@ -158,8 +158,8 @@ begin
    -- Ring Buffer DIMM
    -------------------
    GEN_VEC :
-   for i in AXIL_XBAR_SIZE_C-1 downto 0 generate
-      U_RingBufferTop : entity nexo_daq_ring_buffer.RingBufferDimm
+   for i in NUM_DIMM_C-1 downto 0 generate
+      U_RingBufferDimm : entity nexo_daq_ring_buffer.RingBufferDimm
          generic map (
             TPD_G                  => TPD_G,
             SIMULATION_G           => SIMULATION_G,
