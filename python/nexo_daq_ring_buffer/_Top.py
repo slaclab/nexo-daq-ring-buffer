@@ -18,7 +18,7 @@ class Top(pr.Device):
         # Refer to RingBufferTop.vhd's STREAMS_C definition
         numStream = [7,7,8,8]
 
-        for i in range(numStream):
+        for i in range(4):
             self.add(ringBuff.Dimm(
                 name      = f'Dimm[{i}]',
                 offset    = i*0x1000, # Refer to RingBufferTop.vhd's AXIL_XBAR_CONFIG_C definition
