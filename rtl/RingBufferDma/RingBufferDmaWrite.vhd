@@ -33,10 +33,10 @@ use nexo_daq_ring_buffer.RingBufferDmaPkg.all;
 
 entity RingBufferDmaWrite is
    generic (
-      TPD_G          : time    := 1 ns;
-      PIPE_STAGES_G  : natural := 0;
-      ADC_TYPE_G     : AdcType := ADC_TYPE_CHARGE_C;
-      STREAM_INDEX_G : natural := 0);
+      TPD_G          : time := 1 ns;
+      PIPE_STAGES_G  : natural;
+      ADC_TYPE_G     : AdcType;
+      STREAM_INDEX_G : natural);
    port (
       -- Clock/Reset
       axiClk         : in  sl;

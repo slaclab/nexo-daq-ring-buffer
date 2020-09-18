@@ -28,7 +28,7 @@ library nexo_daq_ring_buffer;
 entity RingBufferAxiXbar is
    generic (
       TPD_G       : time                  := 1 ns;
-      AXIS_SIZE_G : positive range 1 to 8 := 8);
+      AXIS_SIZE_G : positive range 7 to 8 := 8);
    port (
       -- Application AXI4 Interface (coreClk domain)
       coreClk          : in  sl;

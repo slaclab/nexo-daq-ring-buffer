@@ -36,14 +36,14 @@ use nexo_daq_trigger_decision.TriggerDecisionPkg.all;
 
 entity RingBufferTop is
    generic (
-      TPD_G                  : time             := 1 ns;
-      SIMULATION_G           : boolean          := false;
-      ADC_TYPE_G             : AdcType          := ADC_TYPE_CHARGE_C;
-      ADC_CLK_IS_CORE_CLK_G  : boolean          := false;
-      TRIG_CLK_IS_CORE_CLK_G : boolean          := false;
-      COMP_CLK_IS_CORE_CLK_G : boolean          := false;
-      AXIL_CLK_IS_CORE_CLK_G : boolean          := false;
-      AXIL_BASE_ADDR_G       : slv(31 downto 0) := (others => '0'));
+      TPD_G                  : time := 1 ns;
+      SIMULATION_G           : boolean;
+      ADC_TYPE_G             : AdcType;
+      ADC_CLK_IS_CORE_CLK_G  : boolean;
+      TRIG_CLK_IS_CORE_CLK_G : boolean;
+      COMP_CLK_IS_CORE_CLK_G : boolean;
+      AXIL_CLK_IS_CORE_CLK_G : boolean;
+      AXIL_BASE_ADDR_G       : slv(31 downto 0));
    port (
       -- Core Clock/Reset
       coreClk         : in  sl;
@@ -114,7 +114,54 @@ architecture mapping of RingBufferTop is
    signal adcMasterRegs : AxiStreamMasterArray(29 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);
    signal adcSlaveRegs  : AxiStreamSlaveArray(29 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C);
 
+   signal axilReset : sl;
+   signal coreReset : sl;
+   signal trigReset : sl;
+   signal adcReset  : sl;
+   signal compReset : sl;
+   signal ddrReset  : slv(NUM_DIMM_C-1 downto 0);
+
 begin
+
+   U_axilRst : entity surf.RstPipeline
+      generic map (
+         TPD_G => TPD_G)
+      port map (
+         clk    => axilClk,
+         rstIn  => axilRst,
+         rstOut => axilReset);
+
+   U_coreRst : entity surf.RstPipeline
+      generic map (
+         TPD_G => TPD_G)
+      port map (
+         clk    => coreClk,
+         rstIn  => coreRst,
+         rstOut => coreReset);
+
+   U_trigRst : entity surf.RstPipeline
+      generic map (
+         TPD_G => TPD_G)
+      port map (
+         clk    => trigClk,
+         rstIn  => trigRst,
+         rstOut => trigReset);
+
+   U_adcRst : entity surf.RstPipeline
+      generic map (
+         TPD_G => TPD_G)
+      port map (
+         clk    => adcClk,
+         rstIn  => adcRst,
+         rstOut => adcReset);
+
+   U_compRst : entity surf.RstPipeline
+      generic map (
+         TPD_G => TPD_G)
+      port map (
+         clk    => compClk,
+         rstIn  => compRst,
+         rstOut => compReset);
 
    --------------------
    -- AXI-Lite Crossbar
@@ -127,7 +174,7 @@ begin
          MASTERS_CONFIG_G   => AXIL_XBAR_CONFIG_C)
       port map (
          axiClk              => axilClk,
-         axiClkRst           => axilRst,
+         axiClkRst           => axilReset,
          sAxiWriteMasters(0) => axilWriteMaster,
          sAxiWriteSlaves(0)  => axilWriteSlave,
          sAxiReadMasters(0)  => axilReadMaster,
@@ -149,7 +196,7 @@ begin
       port map (
          -- Clock and reset
          axisClk      => trigClk,
-         axisRst      => trigRst,
+         axisRst      => trigReset,
          -- Slave
          sAxisMaster  => trigRdMaster,
          sAxisSlave   => trigRdSlave,
@@ -167,7 +214,7 @@ begin
             PIPE_STAGES_G => 1)
          port map (
             axisClk     => adcClk,
-            axisRst     => adcRst,
+            axisRst     => adcReset,
             sAxisMaster => adcMasters(i),
             sAxisSlave  => adcSlaves(i),
             mAxisMaster => adcMasterRegs(i),
@@ -180,6 +227,7 @@ begin
    -------------------
    GEN_VEC :
    for i in NUM_DIMM_C-1 downto 0 generate
+
       U_RingBufferDimm : entity nexo_daq_ring_buffer.RingBufferDimm
          generic map (
             TPD_G                  => TPD_G,
@@ -195,36 +243,45 @@ begin
          port map (
             -- Core Clock/Reset
             coreClk          => coreClk,
-            coreRst          => coreRst,
+            coreRst          => coreReset,
             -- DDR Memory Interface (ddrClk domain)
             ddrClk           => ddrClk(i),
-            ddrRst           => ddrRst(i),
+            ddrRst           => ddrReset(i),
             ddrWriteMaster   => ddrWriteMasters(i),
             ddrWriteSlave    => ddrWriteSlaves(i),
             ddrReadMaster    => ddrReadMasters(i),
             ddrReadSlave     => ddrReadSlaves(i),
             -- ADC Streams Interface (adcClk domain, nexoAxisConfig(ADC_TYPE_G))
             adcClk           => adcClk,
-            adcRst           => adcRst,
+            adcRst           => adcReset,
             adcMasters       => adcMasterRegs(MSB_C(i) downto LSB_C(i)),
             adcSlaves        => adcSlaveRegs(MSB_C(i) downto LSB_C(i)),
             -- Trigger Decision Interface (trigClk domain, TRIG_DECISION_AXIS_CONFIG_C)
             trigClk          => trigClk,
-            trigRst          => trigRst,
+            trigRst          => trigReset,
             trigRdMaster     => trigRdMasters(i),
             trigRdSlave      => trigRdSlaves(i),
             -- Compression Interface (compClk domain, nexoAxisConfig(ADC_TYPE_G))
             compClk          => compClk,
-            compRst          => compRst,
+            compRst          => compReset,
             compMasters      => compMasters(MSB_C(i) downto LSB_C(i)),
             compSlaves       => compSlaves(MSB_C(i) downto LSB_C(i)),
             -- AXI-Lite Interface (axilClk domain)
             axilClk          => axilClk,
-            axilRst          => axilRst,
+            axilRst          => axilReset,
             sAxilReadMaster  => axilReadMasters(i),
             sAxilReadSlave   => axilReadSlaves(i),
             sAxilWriteMaster => axilWriteMasters(i),
             sAxilWriteSlave  => axilWriteSlaves(i));
+
+      U_ddrRst : entity surf.RstPipeline
+         generic map (
+            TPD_G => TPD_G)
+         port map (
+            clk    => ddrClk(i),
+            rstIn  => ddrRst(i),
+            rstOut => ddrReset(i));
+
    end generate GEN_VEC;
 
 end mapping;

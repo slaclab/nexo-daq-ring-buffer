@@ -35,11 +35,11 @@ use nexo_daq_trigger_decision.TriggerDecisionPkg.all;
 
 entity RingBufferEngine is
    generic (
-      TPD_G            : time    := 1 ns;
-      SIMULATION_G     : boolean := false;
-      ADC_TYPE_G       : AdcType := ADC_TYPE_CHARGE_C;
-      DDR_DIMM_INDEX_G : natural := 0;
-      STREAM_INDEX_G   : natural := 0);
+      TPD_G            : time := 1 ns;
+      SIMULATION_G     : boolean;
+      ADC_TYPE_G       : AdcType;
+      DDR_DIMM_INDEX_G : natural;
+      STREAM_INDEX_G   : natural);
    port (
       -- Clock and Reset
       clk             : in  sl;
@@ -199,9 +199,8 @@ begin
    ------------
    U_WriteFsm : entity nexo_daq_ring_buffer.RingBufferWriteFsm
       generic map (
-         TPD_G          => TPD_G,
-         ADC_TYPE_G     => ADC_TYPE_G,
-         STREAM_INDEX_G => STREAM_INDEX_G)
+         TPD_G      => TPD_G,
+         ADC_TYPE_G => ADC_TYPE_G)
       port map (
          -- Control/Monitor Interface
          enable      => r.enable,

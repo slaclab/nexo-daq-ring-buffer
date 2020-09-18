@@ -33,10 +33,10 @@ use nexo_daq_trigger_decision.TriggerDecisionPkg.all;
 
 entity RingBufferReadFsm is
    generic (
-      TPD_G            : time    := 1 ns;
-      ADC_TYPE_G       : AdcType := ADC_TYPE_CHARGE_C;
-      DDR_DIMM_INDEX_G : natural := 0;
-      STREAM_INDEX_G   : natural := 0);
+      TPD_G            : time := 1 ns;
+      ADC_TYPE_G       : AdcType;
+      DDR_DIMM_INDEX_G : natural;
+      STREAM_INDEX_G   : natural);
    port (
       -- Control/Monitor Interface
       enable       : in  sl;
@@ -116,8 +116,7 @@ architecture rtl of RingBufferReadFsm is
 
 begin
 
-   comb : process (compSlave, enable, r, rdAck, readMaster, rst,
-                   trigRdMaster) is
+   comb : process (compSlave, enable, r, rdAck, readMaster, rst, trigRdMaster) is
       variable v : RegType;
    begin
       -- Latch the current value

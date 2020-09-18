@@ -29,10 +29,8 @@ use nexo_daq_ring_buffer.RingBufferPkg.all;
 
 entity RingBufferWriteFsm is
    generic (
-      TPD_G            : time    := 1 ns;
-      ADC_TYPE_G       : AdcType := ADC_TYPE_CHARGE_C;
-      DDR_DIMM_INDEX_G : natural := 0;
-      STREAM_INDEX_G   : natural := 0);
+      TPD_G      : time := 1 ns;
+      ADC_TYPE_G : AdcType);
    port (
       -- Control/Monitor Interface
       enable      : in  sl;

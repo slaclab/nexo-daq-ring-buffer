@@ -37,15 +37,15 @@ use nexo_daq_trigger_decision.TriggerDecisionPkg.all;
 entity RingBufferDimm is
    generic (
       TPD_G                  : time                  := 1 ns;
-      SIMULATION_G           : boolean               := false;
-      ADC_TYPE_G             : AdcType               := ADC_TYPE_CHARGE_C;
-      DDR_DIMM_INDEX_G       : natural               := 0;
-      AXIS_SIZE_G            : positive range 1 to 8 := 8;
-      ADC_CLK_IS_CORE_CLK_G  : boolean               := true;
-      TRIG_CLK_IS_CORE_CLK_G : boolean               := true;
-      COMP_CLK_IS_CORE_CLK_G : boolean               := true;
-      AXIL_CLK_IS_CORE_CLK_G : boolean               := true;
-      AXIL_BASE_ADDR_G       : slv(31 downto 0)      := (others => '0'));
+      SIMULATION_G           : boolean;
+      ADC_TYPE_G             : AdcType;
+      DDR_DIMM_INDEX_G       : natural;
+      AXIS_SIZE_G            : positive range 7 to 8 := 8;
+      ADC_CLK_IS_CORE_CLK_G  : boolean;
+      TRIG_CLK_IS_CORE_CLK_G : boolean;
+      COMP_CLK_IS_CORE_CLK_G : boolean;
+      AXIL_CLK_IS_CORE_CLK_G : boolean;
+      AXIL_BASE_ADDR_G       : slv(31 downto 0));
    port (
       -- Core Clock/Reset
       coreClk          : in  sl;
@@ -112,7 +112,17 @@ architecture mapping of RingBufferDimm is
    signal axiReadMasters  : AxiReadMasterArray(29 downto 0)  := (others => AXI_READ_MASTER_INIT_C);
    signal axiReadSlaves   : AxiReadSlaveArray(29 downto 0)   := (others => AXI_READ_SLAVE_INIT_C);
 
+   signal coreReset : sl;
+
 begin
+
+   U_coreRst : entity surf.RstPipeline
+      generic map (
+         TPD_G => TPD_G)
+      port map (
+         clk    => coreClk,
+         rstIn  => coreRst,
+         rstOut => coreReset);
 
    -----------------------------------------
    -- Convert AXI-Lite bus to coreClk domain
@@ -132,7 +142,7 @@ begin
          sAxiWriteSlave  => sAxilWriteSlave,
          -- Master Interface
          mAxiClk         => coreClk,
-         mAxiClkRst      => coreRst,
+         mAxiClkRst      => coreReset,
          mAxiReadMaster  => axilReadMaster,
          mAxiReadSlave   => axilReadSlave,
          mAxiWriteMaster => axilWriteMaster,
@@ -149,7 +159,7 @@ begin
          MASTERS_CONFIG_G   => AXIL_CONFIG_C)
       port map (
          axiClk              => coreClk,
-         axiClkRst           => coreRst,
+         axiClkRst           => coreReset,
          sAxiWriteMasters(0) => axilWriteMaster,
          sAxiWriteSlaves(0)  => axilWriteSlave,
          sAxiReadMasters(0)  => axilReadMaster,
@@ -184,7 +194,7 @@ begin
             sAxisSlave  => trigRdSlave,
             -- Master Port
             mAxisClk    => coreClk,
-            mAxisRst    => coreRst,
+            mAxisRst    => coreReset,
             mAxisMaster => trigMaster,
             mAxisSlave  => trigSlave);
    end generate;
@@ -206,7 +216,7 @@ begin
       port map (
          -- Clock and reset
          axisClk      => coreClk,
-         axisRst      => coreRst,
+         axisRst      => coreReset,
          -- Slave
          sAxisMaster  => trigMaster,
          sAxisSlave   => trigSlave,
@@ -241,7 +251,7 @@ begin
             sAxisSlave  => adcSlaves(i),
             -- Master Port
             mAxisClk    => coreClk,
-            mAxisRst    => coreRst,
+            mAxisRst    => coreReset,
             mAxisMaster => chMasters(i),
             mAxisSlave  => chSlaves(i));
 
@@ -258,7 +268,7 @@ begin
          port map (
             -- Clock and Reset
             clk             => coreClk,
-            rst             => coreRst,
+            rst             => coreReset,
             -- Compression Inbound Interface
             adcMaster       => chMasters(i),
             adcSlave        => chSlaves(i),
@@ -298,7 +308,7 @@ begin
          port map (
             -- Slave Port
             sAxisClk    => coreClk,
-            sAxisRst    => coreRst,
+            sAxisRst    => coreReset,
             sAxisMaster => cpMasters(i),
             sAxisSlave  => cpSlaves(i),
             -- Master Port
@@ -319,7 +329,7 @@ begin
       port map (
          -- Application AXI4 Interface (coreClk domain)
          coreClk          => coreClk,
-         coreRst          => coreRst,
+         coreRst          => coreReset,
          sAxiWriteMasters => axiWriteMasters,
          sAxiWriteSlaves  => axiWriteSlaves,
          sAxiReadMasters  => axiReadMasters,
