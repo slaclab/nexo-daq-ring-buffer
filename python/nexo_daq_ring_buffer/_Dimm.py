@@ -11,16 +11,12 @@
 import pyrogue              as pr
 import nexo_daq_ring_buffer as ringBuff
 
-class Top(pr.Device):
-    def __init__(self, **kwargs):
+class Dimm(pr.Device):
+    def __init__(self, numStream=8, **kwargs):
         super().__init__(**kwargs)
 
-        # Refer to RingBufferTop.vhd's STREAMS_C definition
-        numStream = [7,7,8,8]
-
         for i in range(numStream):
-            self.add(ringBuff.Dimm(
-                name      = f'Dimm[{i}]',
-                offset    = i*0x1000, # Refer to RingBufferTop.vhd's AXIL_XBAR_CONFIG_C definition
-                numStream = numStream[i],
+            self.add(ringBuff.StreamEngine(
+                name    = f'Stream[{i}]',
+                offset  = i*0x100,
             ))

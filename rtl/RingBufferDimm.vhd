@@ -217,37 +217,33 @@ begin
    GEN_ENGINE_VEC :
    for i in AXIS_SIZE_G-1 downto 0 generate
 
-      ASYNC_CH : if (ADC_CLK_IS_CORE_CLK_G = false) generate
-         U_ASYNC_FIFO : entity surf.AxiStreamFifoV2
-            generic map (
-               -- General Configurations
-               TPD_G               => TPD_G,
-               INT_PIPE_STAGES_G   => 0,
-               PIPE_STAGES_G       => 0,
-               -- FIFO configurations
-               MEMORY_TYPE_G       => "distributed",
-               GEN_SYNC_FIFO_G     => false,
-               FIFO_ADDR_WIDTH_G   => 5,
-               -- AXI Stream Port Configurations
-               SLAVE_AXI_CONFIG_G  => nexoAxisConfig(ADC_TYPE_G),
-               MASTER_AXI_CONFIG_G => nexoAxisConfig(ADC_TYPE_G))
-            port map (
-               -- Slave Port
-               sAxisClk    => trigClk,
-               sAxisRst    => trigRst,
-               sAxisMaster => adcMasters(i),
-               sAxisSlave  => adcSlaves(i),
-               -- Master Port
-               mAxisClk    => coreClk,
-               mAxisRst    => coreRst,
-               mAxisMaster => chMasters(i),
-               mAxisSlave  => chSlaves(i));
-      end generate;
-
-      SYNC_CH : if (ADC_CLK_IS_CORE_CLK_G = true) generate
-         chMasters(i) <= adcMasters(i);
-         adcSlaves(i) <= chSlaves(i);
-      end generate;
+      ---------------
+      -- Inbound FIFO
+      ---------------
+      U_IB_FIFO : entity surf.AxiStreamFifoV2
+         generic map (
+            -- General Configurations
+            TPD_G               => TPD_G,
+            INT_PIPE_STAGES_G   => 1,
+            PIPE_STAGES_G       => 1,
+            -- FIFO configurations
+            MEMORY_TYPE_G       => "block",
+            GEN_SYNC_FIFO_G     => ADC_CLK_IS_CORE_CLK_G,
+            FIFO_ADDR_WIDTH_G   => 9,
+            -- AXI Stream Port Configurations
+            SLAVE_AXI_CONFIG_G  => nexoAxisConfig(ADC_TYPE_G),
+            MASTER_AXI_CONFIG_G => nexoAxisConfig(ADC_TYPE_G))
+         port map (
+            -- Slave Port
+            sAxisClk    => adcClk,
+            sAxisRst    => adcRst,
+            sAxisMaster => adcMasters(i),
+            sAxisSlave  => adcSlaves(i),
+            -- Master Port
+            mAxisClk    => coreClk,
+            mAxisRst    => coreRst,
+            mAxisMaster => chMasters(i),
+            mAxisSlave  => chSlaves(i));
 
       ---------------------
       -- Ring Buffer Engine
@@ -283,37 +279,33 @@ begin
             axilWriteMaster => axilWriteMasters(i),
             axilWriteSlave  => axilWriteSlaves(i));
 
-      ASYNC_COMP : if (COMP_CLK_IS_CORE_CLK_G = false) generate
-         U_ASYNC_FIFO : entity surf.AxiStreamFifoV2
-            generic map (
-               -- General Configurations
-               TPD_G               => TPD_G,
-               INT_PIPE_STAGES_G   => 0,
-               PIPE_STAGES_G       => 0,
-               -- FIFO configurations
-               MEMORY_TYPE_G       => "distributed",
-               GEN_SYNC_FIFO_G     => false,
-               FIFO_ADDR_WIDTH_G   => 5,
-               -- AXI Stream Port Configurations
-               SLAVE_AXI_CONFIG_G  => nexoAxisConfig(ADC_TYPE_G),
-               MASTER_AXI_CONFIG_G => nexoAxisConfig(ADC_TYPE_G))
-            port map (
-               -- Slave Port
-               sAxisClk    => coreClk,
-               sAxisRst    => coreRst,
-               sAxisMaster => cpMasters(i),
-               sAxisSlave  => cpSlaves(i),
-               -- Master Port
-               mAxisClk    => compClk,
-               mAxisRst    => compRst,
-               mAxisMaster => compMasters(i),
-               mAxisSlave  => compSlaves(i));
-      end generate;
-
-      SYNC_COMP : if (COMP_CLK_IS_CORE_CLK_G = true) generate
-         compMasters(i) <= cpMasters(i);
-         cpSlaves(i)    <= compSlaves(i);
-      end generate;
+      ----------------
+      -- Outbound FIFO
+      ----------------
+      U_OB_FIFO : entity surf.AxiStreamFifoV2
+         generic map (
+            -- General Configurations
+            TPD_G               => TPD_G,
+            INT_PIPE_STAGES_G   => 1,
+            PIPE_STAGES_G       => 1,
+            -- FIFO configurations
+            MEMORY_TYPE_G       => "block",
+            GEN_SYNC_FIFO_G     => COMP_CLK_IS_CORE_CLK_G,
+            FIFO_ADDR_WIDTH_G   => 9,
+            -- AXI Stream Port Configurations
+            SLAVE_AXI_CONFIG_G  => nexoAxisConfig(ADC_TYPE_G),
+            MASTER_AXI_CONFIG_G => nexoAxisConfig(ADC_TYPE_G))
+         port map (
+            -- Slave Port
+            sAxisClk    => coreClk,
+            sAxisRst    => coreRst,
+            sAxisMaster => cpMasters(i),
+            sAxisSlave  => cpSlaves(i),
+            -- Master Port
+            mAxisClk    => compClk,
+            mAxisRst    => compRst,
+            mAxisMaster => compMasters(i),
+            mAxisSlave  => compSlaves(i));
 
    end generate GEN_ENGINE_VEC;
 

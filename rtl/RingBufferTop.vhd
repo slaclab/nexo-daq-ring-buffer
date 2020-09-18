@@ -94,21 +94,21 @@ architecture mapping of RingBufferTop is
    signal trigRdSlaves  : AxiStreamSlaveArray(NUM_DIMM_C-1 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C);
 
    constant STREAMS_C : NaturalArray(NUM_DIMM_C-1 downto 0) := (
-      0 => 8,
-      1 => 8,
-      2 => 7,
-      3 => 7);
+      0 => 7,
+      1 => 7,
+      2 => 8,
+      3 => 8);
 
    constant LSB_C : NaturalArray(NUM_DIMM_C-1 downto 0) := (
       0 => 0,
-      1 => 8,
-      2 => 16,
-      3 => 23);
+      1 => 7,
+      2 => 14,
+      3 => 22);
 
    constant MSB_C : NaturalArray(NUM_DIMM_C-1 downto 0) := (
-      0 => 7,
-      1 => 15,
-      2 => 22,
+      0 => 6,
+      1 => 13,
+      2 => 21,
       3 => 29);
 
    signal adcMasterRegs : AxiStreamMasterArray(29 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);

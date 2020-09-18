@@ -7,5 +7,6 @@
 # copied, modified, propagated, or distributed except according to the terms
 # contained in the LICENSE.txt file.
 #-----------------------------------------------------------------------------
-from nexo_daq_ring_buffer._Top           import *
 from nexo_daq_ring_buffer._StreamEngine  import *
+from nexo_daq_ring_buffer._Dimm          import *
+from nexo_daq_ring_buffer._Top           import *
