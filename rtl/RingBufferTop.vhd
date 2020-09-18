@@ -36,14 +36,14 @@ use nexo_daq_trigger_decision.TriggerDecisionPkg.all;
 
 entity RingBufferTop is
    generic (
-      TPD_G                  : time                  := 1 ns;
-      SIMULATION_G           : boolean               := false;
-      ADC_TYPE_G             : AdcType               := ADC_TYPE_CHARGE_C;
-      ADC_CLK_IS_CORE_CLK_G  : boolean               := false;
-      TRIG_CLK_IS_CORE_CLK_G : boolean               := false;
-      COMP_CLK_IS_CORE_CLK_G : boolean               := false;
-      AXIL_CLK_IS_CORE_CLK_G : boolean               := false;
-      AXIL_BASE_ADDR_G       : slv(31 downto 0)      := (others => '0'));
+      TPD_G                  : time             := 1 ns;
+      SIMULATION_G           : boolean          := false;
+      ADC_TYPE_G             : AdcType          := ADC_TYPE_CHARGE_C;
+      ADC_CLK_IS_CORE_CLK_G  : boolean          := false;
+      TRIG_CLK_IS_CORE_CLK_G : boolean          := false;
+      COMP_CLK_IS_CORE_CLK_G : boolean          := false;
+      AXIL_CLK_IS_CORE_CLK_G : boolean          := false;
+      AXIL_BASE_ADDR_G       : slv(31 downto 0) := (others => '0'));
    port (
       -- Core Clock/Reset
       coreClk         : in  sl;
@@ -111,6 +111,9 @@ architecture mapping of RingBufferTop is
       2 => 22,
       3 => 29);
 
+   signal adcMasterRegs : AxiStreamMasterArray(29 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);
+   signal adcSlaveRegs  : AxiStreamSlaveArray(29 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C);
+
 begin
 
    --------------------
@@ -154,6 +157,24 @@ begin
          mAxisMasters => trigRdMasters,
          mAxisSlaves  => trigRdSlaves);
 
+   GEN_PIPE :
+   for i in 29 downto 0 generate
+
+      -- Adding Pipelining to help with making timing between SLRs
+      U_AxiStreamPipeline : entity surf.AxiStreamPipeline
+         generic map (
+            TPD_G         => TPD_G,
+            PIPE_STAGES_G => 1)
+         port map (
+            axisClk     => adcClk,
+            axisRst     => adcRst,
+            sAxisMaster => adcMasters(i),
+            sAxisSlave  => adcSlaves(i),
+            mAxisMaster => adcMasterRegs(i),
+            mAxisSlave  => adcSlaveRegs(i));
+
+   end generate GEN_PIPE;
+
    -------------------
    -- Ring Buffer DIMM
    -------------------
@@ -185,8 +206,8 @@ begin
             -- ADC Streams Interface (adcClk domain, nexoAxisConfig(ADC_TYPE_G))
             adcClk           => adcClk,
             adcRst           => adcRst,
-            adcMasters       => adcMasters(MSB_C(i) downto LSB_C(i)),
-            adcSlaves        => adcSlaves(MSB_C(i) downto LSB_C(i)),
+            adcMasters       => adcMasterRegs(MSB_C(i) downto LSB_C(i)),
+            adcSlaves        => adcSlaveRegs(MSB_C(i) downto LSB_C(i)),
             -- Trigger Decision Interface (trigClk domain, TRIG_DECISION_AXIS_CONFIG_C)
             trigClk          => trigClk,
             trigRst          => trigRst,
