@@ -33,13 +33,13 @@ use nexo_daq_trigger_decision.TriggerDecisionPkg.all;
 
 entity RingBufferReadFsm is
    generic (
-      TPD_G            : time := 1 ns;
-      ADC_TYPE_G       : AdcType;
-      DDR_DIMM_INDEX_G : natural;
-      STREAM_INDEX_G   : natural);
+      TPD_G          : time := 1 ns;
+      ADC_TYPE_G     : AdcType;
+      STREAM_INDEX_G : natural);
    port (
       -- Control/Monitor Interface
       enable       : in  sl;
+      adcChOffset  : in  slv(12 downto 0);
       dropTrig     : out sl;
       eofeEvent    : out sl;
       -- Clock and Reset
@@ -116,7 +116,8 @@ architecture rtl of RingBufferReadFsm is
 
 begin
 
-   comb : process (compSlave, enable, r, rdAck, readMaster, rst, trigRdMaster) is
+   comb : process (adcChOffset, compSlave, enable, r, rdAck, readMaster, rst,
+                   trigRdMaster) is
       variable v : RegType;
    begin
       -- Latch the current value
@@ -232,24 +233,21 @@ begin
                -- Trigger Decision's Readout Size (zero inclusive)
                v.compMaster.tData(63 downto 48) := r.readSize;
 
-               -- Ring Engine Stream ID
+               -- Group of 8 channel Index
                v.compMaster.tData(67 downto 64) := r.readCh;
 
-               -- Ring Engine Stream Index
-               v.compMaster.tData(70 downto 68) := toSlv(STREAM_INDEX_G, 3);
-
-               -- DDR DIMM Index
-               v.compMaster.tData(72 downto 71) := toSlv(DDR_DIMM_INDEX_G, 2);
+               -- ADC Channel Number [Bit12:BiT7]
+               v.compMaster.tData(73 downto 68) := adcChOffset(12 downto 7);
 
                -- ADC_TYPE_G
                if (ADC_TYPE_G = ADC_TYPE_CHARGE_C) then
-                  v.compMaster.tData(73) := '1';  -- ADC_TYPE_CHARGE_C
+                  v.compMaster.tData(74) := '1';  -- ADC_TYPE_CHARGE_C
                else
-                  v.compMaster.tData(73) := '0';  -- PHOTON_AXIS_CONFIG_C
+                  v.compMaster.tData(74) := '0';  -- PHOTON_AXIS_CONFIG_C
                end if;
 
                -- "TBD" field zero'd out
-               v.compMaster.tData(95 downto 74) := (others => '0');
+               v.compMaster.tData(95 downto 75) := (others => '0');
 
                -- Next state
                v.state := DATA_HDR_S;

@@ -232,6 +232,7 @@ begin
          generic map (
             TPD_G                  => TPD_G,
             SIMULATION_G           => SIMULATION_G,
+            ADC_CH_OFFSET_G        => (128*LSB_C(i)),
             ADC_TYPE_G             => ADC_TYPE_G,
             DDR_DIMM_INDEX_G       => i,
             AXIS_SIZE_G            => STREAMS_C(i),

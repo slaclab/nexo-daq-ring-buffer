@@ -80,6 +80,13 @@ class StreamEngine(pr.Device):
             mode         = 'RW',
         ))
 
+        self.add(pr.RemoteVariable(
+            name         = 'AdcChannelOffset',
+            offset       = 0x84,
+            bitSize      = 13,
+            mode         = 'RW',
+        ))
+
         self.add(pr.RemoteCommand(
             name         = "CountReset",
             offset       =  0xFC,

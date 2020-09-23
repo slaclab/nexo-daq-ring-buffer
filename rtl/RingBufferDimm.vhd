@@ -39,6 +39,7 @@ entity RingBufferDimm is
       TPD_G                  : time                  := 1 ns;
       SIMULATION_G           : boolean;
       ADC_TYPE_G             : AdcType;
+      ADC_CH_OFFSET_G        : natural;
       DDR_DIMM_INDEX_G       : natural;
       AXIS_SIZE_G            : positive range 7 to 8 := 8;
       ADC_CLK_IS_CORE_CLK_G  : boolean;
@@ -263,6 +264,7 @@ begin
             TPD_G            => TPD_G,
             SIMULATION_G     => SIMULATION_G,
             ADC_TYPE_G       => ADC_TYPE_G,
+            ADC_CH_OFFSET_G  => (ADC_CH_OFFSET_G+i*128),
             DDR_DIMM_INDEX_G => DDR_DIMM_INDEX_G,
             STREAM_INDEX_G   => i)
          port map (

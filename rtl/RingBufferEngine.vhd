@@ -38,6 +38,7 @@ entity RingBufferEngine is
       TPD_G            : time := 1 ns;
       SIMULATION_G     : boolean;
       ADC_TYPE_G       : AdcType;
+      ADC_CH_OFFSET_G  : natural;
       DDR_DIMM_INDEX_G : natural;
       STREAM_INDEX_G   : natural);
    port (
@@ -69,6 +70,7 @@ architecture rtl of RingBufferEngine is
 
    type RegType is record
       enable         : sl;
+      adcChOffset    : slv(12 downto 0);
       cntRst         : sl;
       dropFrameCnt   : slv(31 downto 0);
       dropTrigCnt    : slv(31 downto 0);
@@ -79,6 +81,7 @@ architecture rtl of RingBufferEngine is
    end record;
    constant REG_INIT_C : RegType := (
       enable         => '1',
+      adcChOffset    => toSlv(ADC_CH_OFFSET_G, 13),
       cntRst         => '0',
       dropFrameCnt   => (others => '0'),
       dropTrigCnt    => (others => '0'),
@@ -165,6 +168,7 @@ begin
       axiSlaveRegisterR(axilEp, x"18", 0, r.eofeEventCnt);
 
       axiSlaveRegister (axilEp, x"80", 0, v.enable);
+      axiSlaveRegister (axilEp, x"84", 0, v.adcChOffset);
 
       axiSlaveRegister (axilEp, x"FC", 0, v.cntRst);
 
@@ -262,13 +266,13 @@ begin
    ------------
    U_ReadFsm : entity nexo_daq_ring_buffer.RingBufferReadFsm
       generic map (
-         TPD_G            => TPD_G,
-         ADC_TYPE_G       => ADC_TYPE_G,
-         DDR_DIMM_INDEX_G => DDR_DIMM_INDEX_G,
-         STREAM_INDEX_G   => STREAM_INDEX_G)
+         TPD_G          => TPD_G,
+         ADC_TYPE_G     => ADC_TYPE_G,
+         STREAM_INDEX_G => STREAM_INDEX_G)
       port map (
          -- Control/Monitor Interface
          enable       => r.enable,
+         adcChOffset  => r.adcChOffset,
          dropTrig     => dropTrig,
          eofeEvent    => eofeEvent,
          -- Clock and Reset
